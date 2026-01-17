@@ -59,6 +59,7 @@ bool newScanStart = true;
 bool preventKeypress = true;
 bool audioState = true;
 bool lockAGC = false;
+bool isChMode = false;
 
 State currentState = SPECTRUM, previousState = SPECTRUM;
 
@@ -97,6 +98,9 @@ KEY_Code_t freqInputArr[10];
 char freqInputString[11];
 
 uint8_t menuState = 0;
+uint8_t currentSL = 0;
+uint16_t countSLchannels = 0;
+uint32_t chFreqs[64];
 uint16_t listenT = 0;
 
 RegisterSpec registerSpecs[] = {
@@ -399,7 +403,7 @@ static void ResetPeak()
     }
 #endif
 
-bool IsCenterMode() { return settings.scanStepIndex < S_STEP_2_5kHz; }
+bool IsCenterMode() { return settings.scanStepIndex < S_STEP_2_5kHz && !isChMode; }
 // scan step in 0.01khz
 uint16_t GetScanStep() { return scanStepValues[settings.scanStepIndex]; }
 
@@ -413,7 +417,7 @@ uint16_t GetStepsCount()
         return (range / step) + 1;  // +1 to include up limit
     }
 #endif
-    return 128 >> settings.stepsCount;
+    return isChMode? scanInfo.measurementsCount : 128 >> settings.stepsCount;
 }
 
 #ifdef ENABLE_SCAN_RANGES
@@ -532,6 +536,30 @@ static void ToggleRX(bool on)
     }
 }
 
+void setChannelFrequencies(uint8_t scanlist, uint8_t recursive, bool inc)
+{
+    if(!recursive)
+        return;
+    uint16_t size_freqs = sizeof(chFreqs)/sizeof(chFreqs[0]);
+    uint16_t firstChannel = RADIO_FindNextChannel(0, 1, true, scanlist);
+    uint16_t channel = firstChannel;
+    countSLchannels = 0;
+    do
+    {
+        uint32_t base = channel * 16;
+        struct {
+            uint32_t Frequency;
+            uint32_t Offset;
+        } __attribute__((packed)) info;
+        PY25Q16_ReadBuffer(base, &info, sizeof(info)); // from chFrScanner.c
+        chFreqs[countSLchannels++] = info.Frequency;
+        channel = RADIO_FindNextChannel(channel + 1, 1, true, scanlist);
+    } while (channel != firstChannel && countSLchannels < size_freqs);
+    if(firstChannel == 0xFFFF)
+        setChannelFrequencies(inc? (scanlist >= MR_CHANNELS_LIST ? 1 : scanlist + 1) : (scanlist <= 1? MR_CHANNELS_LIST : scanlist - 1), recursive - 1, inc);
+    else currentSL = scanlist;
+}
+
 // Scan info
 
 static void ResetScanStats()
@@ -546,10 +574,17 @@ static void InitScan()
 {
     ResetScanStats();
     scanInfo.i = 0;
-    scanInfo.f = GetFStart();
-
-    scanInfo.scanStep = GetScanStep();
-    scanInfo.measurementsCount = GetStepsCount();
+    if(!isChMode)
+    {
+        scanInfo.f = GetFStart();
+        scanInfo.scanStep = GetScanStep();
+        scanInfo.measurementsCount = GetStepsCount();
+    }
+    else 
+    {
+        scanInfo.f = chFreqs[0];
+        scanInfo.measurementsCount = countSLchannels;
+    }
 }
 
 static void ResetBlacklist()
@@ -949,7 +984,7 @@ uint8_t Rssi2Y(uint16_t rssi)
             
 #ifdef ENABLE_SCAN_RANGES
             uint8_t x;
-            if (gScanRangeStart && bars > 1)
+            if ((gScanRangeStart || isChMode) && bars > 1)
             {
                 // Total width units = (bars - 1) full bars + 2 half bars = bars
                 // First bar: half width, middle bars: full width, last bar: half width
@@ -1103,11 +1138,17 @@ static void DrawNums()
             sprintf(String, "%ux", GetStepsCount());
         }
         GUI_DisplaySmallest(String, 0, 1, false, true);
-        sprintf(String, "%u.%02uk", GetScanStep() / 100, GetScanStep() % 100);
+        if(isChMode) sprintf(String, "List %u", currentSL);
+        else sprintf(String, "%u.%02uk", GetScanStep() / 100, GetScanStep() % 100);
         GUI_DisplaySmallest(String, 0, 7, false, true);
     }
 
-    if (IsCenterMode())
+    if (isChMode)
+    {
+        sprintf(String, "Channel mode");
+        GUI_DisplaySmallest(String, 40, 49, false, true);
+    }
+    else if (IsCenterMode())
     {
         sprintf(String, "%u.%05u \x7F%u.%02uk", currentFreq / 100000,
                 currentFreq % 100000, settings.frequencyChangeStep / 100,
@@ -1141,6 +1182,8 @@ static void DrawRssiTriggerLevel()
 
 static void DrawTicks()
 {
+    if(isChMode)
+        return;
     uint32_t f = GetFStart();
     uint32_t span = GetFEnd() - GetFStart();
     uint32_t step = span / 128;
@@ -1206,8 +1249,17 @@ static void OnKeyDown(uint8_t key)
         UpdateFreqChangeStep(false);
         break;
     case KEY_UP:
+        if(isChMode)
+        {
+            if(gEeprom.SET_NAV == 0)
+                setChannelFrequencies(currentSL <= 1? MR_CHANNELS_LIST : currentSL - 1, MR_CHANNELS_LIST + 1, false);
+            else 
+                setChannelFrequencies(currentSL >= MR_CHANNELS_LIST? 1 : currentSL + 1, MR_CHANNELS_LIST + 1, true);
+            RelaunchScan();
+            redrawScreen = true;
+        }
 #ifdef ENABLE_SCAN_RANGES
-        if (!gScanRangeStart) {
+        else if (!gScanRangeStart) {
 #endif
         if(gEeprom.SET_NAV == 0)
             UpdateCurrentFreq(false);
@@ -1218,8 +1270,17 @@ static void OnKeyDown(uint8_t key)
 #endif
         break;
     case KEY_DOWN:
+        if(isChMode)
+        {
+            if(gEeprom.SET_NAV == 0)
+                setChannelFrequencies(currentSL >= MR_CHANNELS_LIST? 1 : currentSL + 1, MR_CHANNELS_LIST + 1, true);
+            else 
+                setChannelFrequencies(currentSL <= 1? MR_CHANNELS_LIST : currentSL - 1, MR_CHANNELS_LIST + 1, false);
+            RelaunchScan();
+            redrawScreen = true;
+        }
 #ifdef ENABLE_SCAN_RANGES
-        if (!gScanRangeStart) {
+        else if (!gScanRangeStart) {
 #endif
         if(gEeprom.SET_NAV == 0)
             UpdateCurrentFreq(true);
@@ -1240,7 +1301,7 @@ static void OnKeyDown(uint8_t key)
         break;
     case KEY_5:
 #ifdef ENABLE_SCAN_RANGES
-        if (!gScanRangeStart)
+        if (!gScanRangeStart && !isChMode)
 #endif
             FreqInput();
         break;
@@ -1252,7 +1313,7 @@ static void OnKeyDown(uint8_t key)
         break;
     case KEY_4:
 #ifdef ENABLE_SCAN_RANGES
-        if (!gScanRangeStart)
+        if (!gScanRangeStart && !isChMode)
 #endif
             ToggleStepsCount();
         break;
@@ -1595,7 +1656,10 @@ static void NextScanStep()
 {
     ++peak.t;
     ++scanInfo.i;
-    scanInfo.f += scanInfo.scanStep;
+    if (isChMode)
+        scanInfo.f = chFreqs[scanInfo.i];
+    else 
+        scanInfo.f += scanInfo.scanStep;
 }
 
 static void UpdateScan()
@@ -1775,9 +1839,17 @@ void APP_RunSpectrum()
 #ifdef ENABLE_FEAT_F4HWN_SPECTRUM
     LoadSettings();
 #endif
-    // set the current frequency in the middle of the display
+// set the current frequency in the middle of the display
+    isChMode = false;
+    countSLchannels = 0;
+    currentSL = MIN(gTxVfo->SCANLIST_PARTICIPATION, MR_CHANNELS_LIST);
+    if(IS_MR_CHANNEL(gTxVfo->CHANNEL_SAVE) && currentSL)
+    {
+        isChMode = true;
+        setChannelFrequencies(currentSL, MR_CHANNELS_LIST + 1, true);
+    }
 #ifdef ENABLE_SCAN_RANGES
-    if (gScanRangeStart)
+    else if (gScanRangeStart)
     {
         currentFreq = initialFreq = gScanRangeStart;
         for (uint8_t i = 0; i < ARRAY_SIZE(scanStepValues); i++)

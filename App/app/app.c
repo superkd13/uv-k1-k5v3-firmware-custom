@@ -27,6 +27,9 @@
 #ifdef ENABLE_FEAT_F4HWN_BEAM
     #include "app/beam.h"
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+    #include "app/msg.h"
+#endif
 #include "app/app.h"
 #include "app/chFrScanner.h"
 #include "app/dtmf.h"
@@ -100,6 +103,10 @@ void (*ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) 
 
 #ifdef ENABLE_AIRCOPY
     [DISPLAY_AIRCOPY] = &AIRCOPY_ProcessKeys,
+#endif
+
+#ifdef ENABLE_FEAT_KD_MSG
+    [DISPLAY_MSG] = &MSG_ProcessKeys,
 #endif
 };
 
@@ -818,6 +825,17 @@ static void CheckRadioInterrupts(void)
             BEAM_StorePacket();
         }
 #endif
+
+#ifdef ENABLE_FEAT_KD_MSG
+        if (interrupts.fskFifoAlmostFull)
+        {
+            for (unsigned int i = 0; i < 4; i++) {
+                g_FSK_Buffer[gFSKWriteIndex++] = BK4819_ReadRegister(BK4819_REG_5F);
+            }
+
+            MSG_StorePacket();
+        }
+#endif
     }
 }
 
@@ -1069,6 +1087,9 @@ void APP_Update(void)
 #ifdef ENABLE_FEAT_F4HWN_BEAM
         && !gBeamActive
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+        && !gMsgActive
+#endif
 #ifdef ENABLE_VOICE
         && gVoiceWriteIndex == 0
 #endif
@@ -1151,6 +1172,9 @@ void APP_Update(void)
 #ifdef ENABLE_FEAT_F4HWN_BEAM
                 && !gBeamActive
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+                && !gMsgActive
+#endif
             )
             {   // dual watch mode, toggle between the two VFO's
                 DualwatchAlternate();
@@ -1186,9 +1210,14 @@ void APP_Update(void)
 
         }
         else
+        if (1
 #ifdef ENABLE_FEAT_F4HWN_BEAM
-        if (!gBeamActive)
+        && !gBeamActive
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+        && !gMsgActive
+#endif
+        )
         {
             // toggle between the two VFO's
             DualwatchAlternate();

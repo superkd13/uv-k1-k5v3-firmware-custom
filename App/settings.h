@@ -134,6 +134,9 @@ enum ACTION_OPT_t {
 #ifdef ENABLE_FEAT_F4HWN_BEAM
     ACTION_OPT_BEAM,
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+    ACTION_OPT_MSG,
+#endif
     ACTION_OPT_LEN
 };
 

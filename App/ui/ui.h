@@ -38,6 +38,10 @@ enum GUI_DisplayType_t
     DISPLAY_REGA,
 #endif
 
+#ifdef ENABLE_FEAT_KD_MSG
+    DISPLAY_MSG,
+#endif
+
     DISPLAY_N_ELEM,
     DISPLAY_INVALID = 0xFFu
 };

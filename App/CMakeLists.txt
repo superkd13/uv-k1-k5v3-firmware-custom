@@ -209,6 +209,10 @@ enable_feature(ENABLE_FEAT_F4HWN_MEM)
 enable_feature(ENABLE_FEAT_F4HWN_BEAM
     app/beam.c
 )
+enable_feature(ENABLE_FEAT_KD_MSG
+    app/msg.c
+    ui/msg.c
+)
 
 if(ENABLE_FEAT_F4HWN_BEAM AND NOT ENABLE_AIRCOPY)
     message(FATAL_ERROR "ENABLE_FEAT_F4HWN_BEAM requires ENABLE_AIRCOPY (it reuses g_FSK_Buffer, AIRCOPY_Obfuscate and the FSK packet plumbing).")

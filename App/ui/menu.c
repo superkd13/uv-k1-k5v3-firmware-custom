@@ -514,6 +514,9 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
     #ifdef ENABLE_FEAT_F4HWN_BEAM
         {"BEAM",            ACTION_OPT_BEAM},
     #endif
+    #ifdef ENABLE_FEAT_KD_MSG
+        {"MSG",            ACTION_OPT_MSG},
+    #endif
 #endif
 };
 

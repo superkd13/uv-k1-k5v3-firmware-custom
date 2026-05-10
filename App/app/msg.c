@@ -53,7 +53,7 @@ static const char* const msg_char_map[10] = {
     "wxyz9"                         // KEY_9
 };
 
-static_assert(sizeof(MSG_Payload_t) <= 64);
+static_assert(sizeof(MSG_Payload_t) <= 26);
 
 bool          gMsgActive;
 char          gLastMessages[2][MSG_MAX_SIZE];
@@ -88,15 +88,15 @@ static void MSG_SendPacket(void)
     memset(g_FSK_Buffer, 0, sizeof(g_FSK_Buffer));
     g_FSK_Buffer[0] = 0xABCDu;
     
-    MSG_Payload_t* const payload = (MSG_Payload_t *)&g_FSK_Buffer[2];
+    MSG_Payload_t* const payload = (MSG_Payload_t *)&g_FSK_Buffer[1];
     
     payload->magic = MSG_PACKET_MAGIC;
     strncpy(payload->content, gCurrentUserMessage, MSG_MAX_SIZE - 1);
 
-    g_FSK_Buffer[34] = CRC_Calculate(&g_FSK_Buffer[1], 2 + 64);
-    g_FSK_Buffer[35] = 0xDCBAu;
+    g_FSK_Buffer[14] = CRC_Calculate(&g_FSK_Buffer[1], 26);
+    g_FSK_Buffer[15] = 0xDCBAu;
 
-    AIRCOPY_Obfuscate(32);
+    AIRCOPY_Obfuscate(13);
 
     gReceivedSent |= (1 << 2);
     UI_DisplayMsg();
@@ -128,7 +128,7 @@ static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     }
     if (bKeyHeld) {
         gCurrentMsgWriteIndex = 0;
-        BK4819_SetupAircopy();
+        BK4819_SetupMsg();
         BK4819_ResetFSK();
         MSG_SendPacket();
     }
@@ -175,7 +175,7 @@ void ACTION_Msg(void)
 
 void MSG_StorePacket(void)
 {
-    if (gFSKWriteIndex < 36) {
+    if (gFSKWriteIndex < 16) {
         return;
     }
 
@@ -184,32 +184,30 @@ void MSG_StorePacket(void)
     uint16_t Status = BK4819_ReadRegister(BK4819_REG_0B);
     BK4819_PrepareFSKReceive();
 
-    if ((Status & 0x0010U) != 0 || g_FSK_Buffer[0] != 0xABCD || g_FSK_Buffer[35] != 0xDCBA) {
+    if ((Status & 0x0010U) != 0 || g_FSK_Buffer[0] != 0xABCD || g_FSK_Buffer[15] != 0xDCBA) {
         BK4819_ResetFSK();           // <- important
         BK4819_PrepareFSKReceive();  // <- re-arm proprement
         return;
     }
 
-    AIRCOPY_Obfuscate(32);
+    AIRCOPY_Obfuscate(13);
 
-    uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[1], 2 + 64);
-    if (g_FSK_Buffer[34] != Crc) {
+    uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[1], 26);
+    if (g_FSK_Buffer[14] != Crc) {
         return;
     }
 
-    MSG_Payload_t * const payload = (MSG_Payload_t *)&g_FSK_Buffer[2];
+    MSG_Payload_t * const payload = (MSG_Payload_t *)&g_FSK_Buffer[1];
 
     if (payload->magic != MSG_PACKET_MAGIC)
         return;
-
-    const uint8_t *pData = (const uint8_t *)&g_FSK_Buffer[4];
 
     gReceivedSent = ((gReceivedSent << 1) & 2);
 
     gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
 
     strncpy(gLastMessages[0], gLastMessages[1], MSG_MAX_SIZE);
-    strncpy(gLastMessages[1], (char*)pData, MSG_MAX_SIZE);
+    strncpy(gLastMessages[1], payload->content, MSG_MAX_SIZE);
 
     BK4819_ResetFSK();
 }

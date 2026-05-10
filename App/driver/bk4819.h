@@ -116,6 +116,9 @@ void     BK4819_TurnsOffTones_TurnsOnRX(void);
 #ifdef ENABLE_AIRCOPY
     void     BK4819_SetupAircopy(void);
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+    void     BK4819_SetupMsg(void);
+#endif
 void     BK4819_ResetFSK(void);
 void     BK4819_Idle(void);
 #ifdef ENABLE_BYP_RAW_DEMODULATORS

@@ -122,6 +122,9 @@ void Main(void)
 #ifdef ENABLE_AM_FIX
     AM_fix_init();
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+    BK4819_SetupMsg();
+#endif
 
     BOOT_Mode_t  BootMode = BOOT_GetMode();
 

@@ -34,12 +34,22 @@ void UI_DisplayMsg(void)
 
     UI_DisplayClear();
 
-    pPrintStr = "Bonjour de MSG";
+    pPrintStr = "Messages";
 
-    UI_PrintString(pPrintStr, 2, 127, 0, 8);
+    UI_PrintStringSmallBold(pPrintStr, 2, 127, 0);
 
-    UI_PrintStringSmallNormal(gLastReceivedMessage, 20, 0, 3);
-    UI_PrintStringSmallNormal(gCurrentUserMessage, 20, 0, 5);
+    UI_PrintStringSmallNormal(gReceivedSent & 2 ? "S: " : "R: ", 1, 0, 1);
+    UI_PrintStringSmallNormal(gLastMessages[0], 20, 0, 1);
+    UI_PrintStringSmallNormal(gReceivedSent & 1 ? "S: " : "R: ", 1, 0, 3);
+    UI_PrintStringSmallNormal(gLastMessages[1], 20, 0, 3);
+    UI_PrintStringSmallNormal(">", 3, 0, 5);
+
+    if (gReceivedSent & (1 << 2))
+        UI_PrintStringSmallBold(" SENDING ...", 12, 0, 5);
+    else
+        UI_PrintStringSmallNormal(gCurrentUserMessage, 12, 0, 5);
+
+    UI_PrintStringSmallNormal("^", 12 + gCurrentMsgWriteIndex * 7, 0, 6);
 
     ST7565_BlitFullScreen();
 }

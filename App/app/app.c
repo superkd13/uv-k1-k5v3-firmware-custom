@@ -827,10 +827,13 @@ static void CheckRadioInterrupts(void)
 #endif
 
 #ifdef ENABLE_FEAT_KD_MSG
-        if (interrupts.fskFifoAlmostFull)
+        if (interrupts.fskFifoAlmostFull || interrupts.fskRxFinied)
         {
-            for (unsigned int i = 0; i < 4; i++) {
-                g_FSK_Buffer[gFSKWriteIndex++] = BK4819_ReadRegister(BK4819_REG_5F);
+            const unsigned int wordsToRead = interrupts.fskRxFinied ? (36 - gFSKWriteIndex) : 4;
+            for (unsigned int i = 0; i < wordsToRead; i++) {
+                const uint16_t word = BK4819_ReadRegister(BK4819_REG_5F);
+                if (gFSKWriteIndex < 36)
+                    g_FSK_Buffer[gFSKWriteIndex++] = word;
             }
 
             MSG_StorePacket();
@@ -1087,9 +1090,6 @@ void APP_Update(void)
 #ifdef ENABLE_FEAT_F4HWN_BEAM
         && !gBeamActive
 #endif
-#ifdef ENABLE_FEAT_KD_MSG
-        && !gMsgActive
-#endif
 #ifdef ENABLE_VOICE
         && gVoiceWriteIndex == 0
 #endif
@@ -1172,9 +1172,6 @@ void APP_Update(void)
 #ifdef ENABLE_FEAT_F4HWN_BEAM
                 && !gBeamActive
 #endif
-#ifdef ENABLE_FEAT_KD_MSG
-                && !gMsgActive
-#endif
             )
             {   // dual watch mode, toggle between the two VFO's
                 DualwatchAlternate();
@@ -1213,9 +1210,6 @@ void APP_Update(void)
         if (1
 #ifdef ENABLE_FEAT_F4HWN_BEAM
         && !gBeamActive
-#endif
-#ifdef ENABLE_FEAT_KD_MSG
-        && !gMsgActive
 #endif
         )
         {

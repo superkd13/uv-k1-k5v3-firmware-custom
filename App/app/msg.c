@@ -30,13 +30,14 @@
 #include "radio.h"
 #include "settings.h"
 #include "ui/main.h"
+#include "ui/msg.h"
 #include "ui/ui.h"
 
 #define MSG_PACKET_MAGIC   0x0176
 
 typedef struct {
     uint16_t magic;
-    char     content[32];
+    char     content[MSG_MAX_SIZE];
 } MSG_Payload_t;
 
 static const char* const msg_char_map[10] = {
@@ -55,22 +56,31 @@ static const char* const msg_char_map[10] = {
 static_assert(sizeof(MSG_Payload_t) <= 64);
 
 bool          gMsgActive;
-char          gLastReceivedMessage[32] = "test msg...";
-char          gCurrentUserMessage[32] = "";
+char          gLastMessages[2][MSG_MAX_SIZE];
+char          gCurrentUserMessage[MSG_MAX_SIZE] = "                "; // mettre le \0 avant le 20e caractère
 uint8_t       gCurrentMsgWriteIndex = 0;
+uint8_t       gReceivedSent = 0;
 
 static KEY_Code_t msg_edit_last_key = 255;
 static uint8_t msg_edit_char_index = 0;
 
-static void MSG_KeyExit(void)
+static void MSG_KeyExit(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    BK4819_ResetFSK();
+    if (bKeyHeld)
+    {
+        BK4819_ResetFSK();
 
-    RADIO_SelectVfos();
-    RADIO_SetupRegisters(true);
+        RADIO_SelectVfos();
+        RADIO_SetupRegisters(true); // ?
 
-    GUI_SelectNextDisplay(DISPLAY_MAIN);
-    gMsgActive = false;
+        GUI_SelectNextDisplay(DISPLAY_MAIN);
+        gMsgActive = false;
+    }
+    else
+    {
+        msg_edit_last_key = 255;
+        gCurrentUserMessage[gCurrentMsgWriteIndex ? gCurrentMsgWriteIndex-- : 0] = ' ';
+    }
 }
 
 static void MSG_SendPacket(void)
@@ -81,36 +91,46 @@ static void MSG_SendPacket(void)
     MSG_Payload_t* const payload = (MSG_Payload_t *)&g_FSK_Buffer[2];
     
     payload->magic = MSG_PACKET_MAGIC;
-    memcpy(payload->content, gCurrentUserMessage, sizeof(gCurrentUserMessage));
+    strncpy(payload->content, gCurrentUserMessage, MSG_MAX_SIZE - 1);
 
     g_FSK_Buffer[34] = CRC_Calculate(&g_FSK_Buffer[1], 2 + 64);
     g_FSK_Buffer[35] = 0xDCBAu;
 
     AIRCOPY_Obfuscate(32);
 
+    gReceivedSent |= (1 << 2);
+    UI_DisplayMsg();
+    ST7565_BlitFullScreen();
+
     RADIO_SetTxParameters();
     BK4819_SendFSKData(g_FSK_Buffer);
-    BK4819_SetupPowerAmplifier(0, 0);
+    //BK4819_SetupPowerAmplifier(0, 0);
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
 
-    RADIO_SelectVfos();
-    RADIO_SetupRegisters(true);
+    //RADIO_SelectVfos(); // useless here?
+    //RADIO_SetupRegisters(true);
     gBeepToPlay = BEEP_880HZ_60MS_TRIPLE_BEEP;
     gUpdateDisplay = true;
+    gReceivedSent = ((gReceivedSent << 1) & 2) | 1;
+
+    strncpy(gLastMessages[0], gLastMessages[1], MSG_MAX_SIZE);
+    strncpy(gLastMessages[1], gCurrentUserMessage, MSG_MAX_SIZE);
+    strncpy(gCurrentUserMessage, "                 ", MSG_MAX_SIZE); 
+
 }
 
 static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    if (gCurrentMsgWriteIndex < sizeof(gCurrentUserMessage) - 1)
+    if (gCurrentMsgWriteIndex < 16)
     {   
         gCurrentMsgWriteIndex++;
         msg_edit_last_key = 255;
-
-        if (bKeyHeld) {
-            gCurrentMsgWriteIndex = 0;
-
-            MSG_SendPacket();
-        }
+    }
+    if (bKeyHeld) {
+        gCurrentMsgWriteIndex = 0;
+        BK4819_SetupAircopy();
+        BK4819_ResetFSK();
+        MSG_SendPacket();
     }
 }
 
@@ -144,10 +164,13 @@ static void MSG_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
 void ACTION_Msg(void)
 {
-    gMsgActive = true;
-    gCurrentMsgWriteIndex = 0;
-    
-    GUI_SelectNextDisplay(DISPLAY_MSG);
+    if (gTxVfo->Modulation == MODULATION_AM)
+        gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+    else
+    {
+        gMsgActive = true;
+        GUI_SelectNextDisplay(DISPLAY_MSG);
+    }
 }
 
 void MSG_StorePacket(void)
@@ -167,7 +190,7 @@ void MSG_StorePacket(void)
         return;
     }
 
-    AIRCOPY_Obfuscate(34);
+    AIRCOPY_Obfuscate(32);
 
     uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[1], 2 + 64);
     if (g_FSK_Buffer[34] != Crc) {
@@ -181,14 +204,19 @@ void MSG_StorePacket(void)
 
     const uint8_t *pData = (const uint8_t *)&g_FSK_Buffer[4];
 
-    memcpy(gLastReceivedMessage, pData, sizeof(gLastReceivedMessage));
+    gReceivedSent = ((gReceivedSent << 1) & 2);
+
+    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+
+    strncpy(gLastMessages[0], gLastMessages[1], MSG_MAX_SIZE);
+    strncpy(gLastMessages[1], (char*)pData, MSG_MAX_SIZE);
 
     BK4819_ResetFSK();
 }
 
 void MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    if (((Key != KEY_MENU) && bKeyHeld) || !bKeyPressed)
+    if (((Key != KEY_MENU && Key != KEY_EXIT) && bKeyHeld) || !bKeyPressed)
         return;
 
     if (Key != KEY_PTT)
@@ -199,8 +227,13 @@ void MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         MSG_Key_0_to_9(Key, bKeyPressed, bKeyHeld);
         break;
     case KEY_EXIT:
-        MSG_KeyExit();
+        MSG_KeyExit(Key, bKeyPressed, bKeyHeld);
         return;
+    case KEY_STAR:
+        while (gCurrentMsgWriteIndex)
+            MSG_KeyExit(Key, bKeyPressed, false);
+        MSG_KeyExit(Key, bKeyPressed, false);
+        break;
     case KEY_MENU:
         MSG_KeyMenu(Key, bKeyPressed, bKeyHeld);
         break;

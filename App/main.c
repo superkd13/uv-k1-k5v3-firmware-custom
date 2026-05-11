@@ -124,6 +124,7 @@ void Main(void)
 #endif
 #ifdef ENABLE_FEAT_KD_MSG
     BK4819_SetupMsg();
+    BK4819_ResetFSK();
 #endif
 
     BOOT_Mode_t  BootMode = BOOT_GetMode();

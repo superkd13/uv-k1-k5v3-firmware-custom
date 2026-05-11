@@ -1102,11 +1102,11 @@ void BK4819_TurnsOffTones_TurnsOnRX(void)
     }
 #endif
 
-#ifdef ENABLE_AIRCOPY
+#ifdef ENABLE_FEAT_KD_MSG
     void BK4819_SetupMsg(void)
     {
         BK4819_WriteRegister(BK4819_REG_70, 0x00E0);    // Enable Tone2, tuning gain 48
-        BK4819_WriteRegister(BK4819_REG_72, 0x3065);    // Tone2 baudrate 1200
+        BK4819_WriteRegister(BK4819_REG_72, MSG_BAUDRATE);    // Tone2 baudrate 
         BK4819_WriteRegister(BK4819_REG_58, 0x00C1);    // FSK Enable, FSK 1.2K RX Bandwidth, Preamble 0xAA or 0x55, RX Gain 0, RX Mode
                                                         // (FSK1.2K, FSK2.4K Rx and NOAA SAME Rx), TX Mode FSK 1.2K and FSK 2.4K Tx
         BK4819_WriteRegister(BK4819_REG_5C, 0x5665);    // Enable CRC among other things we don't know yet

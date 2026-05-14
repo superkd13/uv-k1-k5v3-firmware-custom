@@ -1711,6 +1711,34 @@ void BK4819_SendFSKData(uint16_t *pData)
     BK4819_ResetFSK();
 }
 
+void BK4819_SendFSKDataMsg(uint16_t *pData, uint8_t payload_size)
+{
+    unsigned int i;
+    uint8_t Timeout = 200;
+
+    SYSTEM_DelayMs(20);
+
+    BK4819_WriteRegister(BK4819_REG_3F, BK4819_REG_3F_FSK_TX_FINISHED);
+    BK4819_WriteRegister(BK4819_REG_59, 0x8068);
+    BK4819_WriteRegister(BK4819_REG_59, 0x0068);
+
+    for (i = 0; i < payload_size; i++)
+        BK4819_WriteRegister(BK4819_REG_5F, pData[i]);
+
+    SYSTEM_DelayMs(20);
+
+    BK4819_WriteRegister(BK4819_REG_59, 0x2868);
+
+    while (Timeout-- && (BK4819_ReadRegister(BK4819_REG_0C) & 1u) == 0)
+        SYSTEM_DelayMs(5);
+
+    BK4819_WriteRegister(BK4819_REG_02, 0);
+
+    SYSTEM_DelayMs(20);
+
+    BK4819_ResetFSK();
+}
+
 void BK4819_PrepareFSKReceive(void)
 {
     BK4819_ResetFSK();

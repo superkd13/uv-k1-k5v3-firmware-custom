@@ -96,19 +96,19 @@ static void MSG_SendPacket(void)
     g_FSK_Buffer[14] = CRC_Calculate(&g_FSK_Buffer[1], 26);
     g_FSK_Buffer[15] = 0xDCBAu;
 
-    AIRCOPY_Obfuscate(13);
-
     gReceivedSent |= (1 << 2);
     UI_DisplayMsg();
     ST7565_BlitFullScreen();
 
     RADIO_SetTxParameters();
-    BK4819_SendFSKData(g_FSK_Buffer);
-    //BK4819_SetupPowerAmplifier(0, 0);
+    BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, true);
+    BK4819_SendFSKDataMsg(g_FSK_Buffer, 13);
+    BK4819_SetupPowerAmplifier(0, 0); 
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
+    BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, false);
 
     //RADIO_SelectVfos(); // useless here?
-    //RADIO_SetupRegisters(true);
+    RADIO_SetupRegisters(true);
     gBeepToPlay = BEEP_880HZ_60MS_TRIPLE_BEEP;
     gUpdateDisplay = true;
     gReceivedSent = ((gReceivedSent << 1) & 2) | 1;
@@ -189,8 +189,6 @@ void MSG_StorePacket(void)
         BK4819_PrepareFSKReceive();  // <- re-arm proprement
         return;
     }
-
-    AIRCOPY_Obfuscate(13);
 
     uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[1], 26);
     if (g_FSK_Buffer[14] != Crc) {

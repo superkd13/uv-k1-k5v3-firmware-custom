@@ -60,6 +60,7 @@ char          gLastMessages[2][MSG_MAX_SIZE];
 char          gCurrentUserMessage[MSG_MAX_SIZE] = "                "; // mettre le \0 avant le 20e caractère
 uint8_t       gCurrentMsgWriteIndex = 0;
 uint8_t       gReceivedSent = 0;
+bool          gUnreadMessage = false;
 
 static KEY_Code_t msg_edit_last_key = 255;
 static uint8_t msg_edit_char_index = 0;
@@ -68,10 +69,8 @@ static void MSG_KeyExit(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (bKeyHeld)
     {
-        BK4819_ResetFSK();
-
         RADIO_SelectVfos();
-        RADIO_SetupRegisters(true); // ?
+        RADIO_SetupRegisters(true);
 
         GUI_SelectNextDisplay(DISPLAY_MAIN);
         gMsgActive = false;
@@ -102,7 +101,7 @@ static void MSG_SendPacket(void)
 
     RADIO_SetTxParameters();
     BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, true);
-    BK4819_SendFSKDataMsg(g_FSK_Buffer, 13);
+    BK4819_SendFSKDataMsg(g_FSK_Buffer, 16);
     BK4819_SetupPowerAmplifier(0, 0); 
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
     BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, false);
@@ -169,6 +168,7 @@ void ACTION_Msg(void)
     else
     {
         gMsgActive = true;
+        gUnreadMessage = false;
         GUI_SelectNextDisplay(DISPLAY_MSG);
     }
 }
@@ -182,11 +182,9 @@ void MSG_StorePacket(void)
     gFSKWriteIndex = 0;
     gUpdateDisplay = true;
     uint16_t Status = BK4819_ReadRegister(BK4819_REG_0B);
-    BK4819_PrepareFSKReceive();
+    RADIO_SetupRegisters(true);
 
     if ((Status & 0x0010U) != 0 || g_FSK_Buffer[0] != 0xABCD || g_FSK_Buffer[15] != 0xDCBA) {
-        BK4819_ResetFSK();           // <- important
-        BK4819_PrepareFSKReceive();  // <- re-arm proprement
         return;
     }
 
@@ -201,13 +199,13 @@ void MSG_StorePacket(void)
         return;
 
     gReceivedSent = ((gReceivedSent << 1) & 2);
-
-    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+    if(!gMsgActive) 
+        gUnreadMessage = true;
 
     strncpy(gLastMessages[0], gLastMessages[1], MSG_MAX_SIZE);
     strncpy(gLastMessages[1], payload->content, MSG_MAX_SIZE);
 
-    BK4819_ResetFSK();
+    //BK4819_ResetFSK();
 }
 
 void MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)

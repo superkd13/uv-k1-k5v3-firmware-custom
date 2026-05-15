@@ -920,6 +920,12 @@ void RADIO_SetupRegisters(bool switchToForeground)
     BK4819_EnableDTMF();
     InterruptMask |= BK4819_REG_3F_DTMF_5TONE_FOUND;
 
+#ifdef ENABLE_FEAT_KD_MSG
+    InterruptMask |= BK4819_REG_3F_FSK_RX_FINISHED | BK4819_REG_3F_FSK_FIFO_ALMOST_FULL;
+    BK4819_WriteRegister(BK4819_REG_59, 0x4068);
+    BK4819_WriteRegister(BK4819_REG_59, 0x3068);
+#endif
+
     RADIO_SetupAGC(gRxVfo->Modulation == MODULATION_AM, false);
     //RADIO_SetupAGC(false, false);
 

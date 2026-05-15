@@ -48,4 +48,8 @@ extern const uint8_t BITMAP_NOAA[12];
     extern const uint8_t BITMAP_CurrentIndicator[8];
 #endif
 
+#ifdef ENABLE_FEAT_KD_MSG
+    extern const uint8_t BITMAP_UNREADMSG[8];
+#endif
+
 #endif

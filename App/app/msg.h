@@ -31,6 +31,7 @@ extern char          gLastMessages[2][MSG_MAX_SIZE];
 extern char          gCurrentUserMessage[MSG_MAX_SIZE];
 extern uint8_t       gCurrentMsgWriteIndex;
 extern uint8_t       gReceivedSent;
+extern bool          gUnreadMessage;
 
 void ACTION_Msg(void);
 void MSG_StorePacket(void);

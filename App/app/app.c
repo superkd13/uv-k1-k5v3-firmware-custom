@@ -29,6 +29,7 @@
 #endif
 #ifdef ENABLE_FEAT_KD_MSG
     #include "app/msg.h"
+    #include "ui/msg.h"
 #endif
 #include "app/app.h"
 #include "app/chFrScanner.h"
@@ -827,12 +828,12 @@ static void CheckRadioInterrupts(void)
 #endif
 
 #ifdef ENABLE_FEAT_KD_MSG
-        if (interrupts.fskFifoAlmostFull || interrupts.fskRxFinied)
+        if (gScreenToDisplay != DISPLAY_AIRCOPY && !gBeamActive && (interrupts.fskFifoAlmostFull || interrupts.fskRxFinied))
         {
-            const unsigned int wordsToRead = interrupts.fskRxFinied ? (36 - gFSKWriteIndex) : 4;
+            const unsigned int wordsToRead = 4;
             for (unsigned int i = 0; i < wordsToRead; i++) {
                 const uint16_t word = BK4819_ReadRegister(BK4819_REG_5F);
-                if (gFSKWriteIndex < 36)
+                if (gFSKWriteIndex < 16)
                     g_FSK_Buffer[gFSKWriteIndex++] = word;
             }
 

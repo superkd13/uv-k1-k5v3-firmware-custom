@@ -38,13 +38,17 @@ void UI_DisplayMsg(void)
 
     UI_PrintStringSmallBold(pPrintStr, 2, 127, 0);
 
-    UI_PrintStringSmallNormal(gReceivedSent & 2 ? "S: " : "R: ", 1, 0, 1);
-    UI_PrintStringSmallNormal(gLastMessages[0], 20, 0, 1);
-    UI_PrintStringSmallNormal(gReceivedSent & 1 ? "S: " : "R: ", 1, 0, 3);
-    UI_PrintStringSmallNormal(gLastMessages[1], 20, 0, 3);
-    UI_PrintStringSmallNormal(">", 3, 0, 5);
+    UI_PrintStringSmallNormal(gReceivedSent & 8 ? "< " : "> ", 2, 0, 1);
+    UI_PrintStringSmallNormal(gLastMessages[0], 16, 0, 1);
+    UI_PrintStringSmallNormal(gReceivedSent & 4 ? "< " : "> ", 2, 0, 2);
+    UI_PrintStringSmallNormal(gLastMessages[1], 16, 0, 2);
+    UI_PrintStringSmallNormal(gReceivedSent & 2 ? "< " : "> ", 2, 0, 3);
+    UI_PrintStringSmallNormal(gLastMessages[2], 16, 0, 3);
+    UI_PrintStringSmallNormal(gReceivedSent & 1 ? "< " : "> ", 2, 0, 4);
+    UI_PrintStringSmallNormal(gLastMessages[3], 16, 0, 4);
+    UI_PrintStringSmallNormal(":", 3, 0, 5);
 
-    if (gReceivedSent & (1 << 2))
+    if (gReceivedSent & (1 << 4))
         UI_PrintStringSmallBold(" SENDING ...", 12, 0, 5);
     else
         UI_PrintStringSmallNormal(gCurrentUserMessage, 12, 0, 5);

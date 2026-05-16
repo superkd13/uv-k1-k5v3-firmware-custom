@@ -56,10 +56,11 @@ static const char* const msg_char_map[10] = {
 static_assert(sizeof(MSG_Payload_t) <= 26);
 
 bool          gMsgActive;
-char          gLastMessages[2][MSG_MAX_SIZE];
+char          gLastMessages[4][MSG_MAX_SIZE];
 char          gCurrentUserMessage[MSG_MAX_SIZE] = "                "; // mettre le \0 avant le 20e caractère
 uint8_t       gCurrentMsgWriteIndex = 0;
 uint8_t       gReceivedSent = 0;
+uint8_t       gSentAck      = 0;
 bool          gUnreadMessage = false;
 
 static KEY_Code_t msg_edit_last_key = 255;
@@ -85,23 +86,21 @@ static void MSG_KeyExit(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 static void MSG_SendPacket(void)
 {
     memset(g_FSK_Buffer, 0, sizeof(g_FSK_Buffer));
-    g_FSK_Buffer[0] = 0xABCDu;
     
-    MSG_Payload_t* const payload = (MSG_Payload_t *)&g_FSK_Buffer[1];
+    MSG_Payload_t* const payload = (MSG_Payload_t *)&g_FSK_Buffer[0];
     
     payload->magic = MSG_PACKET_MAGIC;
     strncpy(payload->content, gCurrentUserMessage, MSG_MAX_SIZE - 1);
 
-    g_FSK_Buffer[14] = CRC_Calculate(&g_FSK_Buffer[1], 26);
-    g_FSK_Buffer[15] = 0xDCBAu;
+    g_FSK_Buffer[11] = CRC_Calculate(&g_FSK_Buffer[0], 22);
 
-    gReceivedSent |= (1 << 2);
+    gReceivedSent |= (1 << 4);
     UI_DisplayMsg();
     ST7565_BlitFullScreen();
 
     RADIO_SetTxParameters();
     BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, true);
-    BK4819_SendFSKDataMsg(g_FSK_Buffer, 16);
+    BK4819_SendFSKDataMsg(g_FSK_Buffer, 12);
     BK4819_SetupPowerAmplifier(0, 0); 
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
     BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, false);
@@ -110,17 +109,20 @@ static void MSG_SendPacket(void)
     RADIO_SetupRegisters(true);
     gBeepToPlay = BEEP_880HZ_60MS_TRIPLE_BEEP;
     gUpdateDisplay = true;
-    gReceivedSent = ((gReceivedSent << 1) & 2) | 1;
+    gReceivedSent = ((gReceivedSent << 1) & 14) | 1;
+    gSentAck      = ((gSentAck << 1) & 14);
 
     strncpy(gLastMessages[0], gLastMessages[1], MSG_MAX_SIZE);
-    strncpy(gLastMessages[1], gCurrentUserMessage, MSG_MAX_SIZE);
+    strncpy(gLastMessages[1], gLastMessages[2], MSG_MAX_SIZE);
+    strncpy(gLastMessages[2], gLastMessages[3], MSG_MAX_SIZE);
+    strncpy(gLastMessages[3], gCurrentUserMessage, MSG_MAX_SIZE);
     strncpy(gCurrentUserMessage, "                 ", MSG_MAX_SIZE); 
 
 }
 
 static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    if (gCurrentMsgWriteIndex < 16)
+    if (gCurrentMsgWriteIndex < 15)
     {   
         gCurrentMsgWriteIndex++;
         msg_edit_last_key = 255;
@@ -184,26 +186,30 @@ void MSG_StorePacket(void)
     uint16_t Status = BK4819_ReadRegister(BK4819_REG_0B);
     RADIO_SetupRegisters(true);
 
-    if ((Status & 0x0010U) != 0 || g_FSK_Buffer[0] != 0xABCD || g_FSK_Buffer[15] != 0xDCBA) {
+    if ((Status & 0x0010U) != 0) {
         return;
     }
 
-    uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[1], 26);
-    if (g_FSK_Buffer[14] != Crc) {
+    uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[0], 22);
+    if (g_FSK_Buffer[11] != Crc) {
         return;
     }
 
-    MSG_Payload_t * const payload = (MSG_Payload_t *)&g_FSK_Buffer[1];
+    MSG_Payload_t * const payload = (MSG_Payload_t *)&g_FSK_Buffer[0];
 
     if (payload->magic != MSG_PACKET_MAGIC)
         return;
 
-    gReceivedSent = ((gReceivedSent << 1) & 2);
+    gReceivedSent = ((gReceivedSent << 1) & 14);
+    gSentAck      = ((gSentAck << 1) & 14);
+
     if(!gMsgActive) 
         gUnreadMessage = true;
 
     strncpy(gLastMessages[0], gLastMessages[1], MSG_MAX_SIZE);
-    strncpy(gLastMessages[1], payload->content, MSG_MAX_SIZE);
+    strncpy(gLastMessages[1], gLastMessages[2], MSG_MAX_SIZE);
+    strncpy(gLastMessages[2], gLastMessages[3], MSG_MAX_SIZE);
+    strncpy(gLastMessages[3], payload->content, MSG_MAX_SIZE);
 
     //BK4819_ResetFSK();
 }

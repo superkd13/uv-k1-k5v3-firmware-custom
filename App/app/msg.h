@@ -27,7 +27,7 @@
 #define MSG_MAX_SIZE       20
 
 extern bool          gMsgActive;
-extern char          gLastMessages[2][MSG_MAX_SIZE];
+extern char          gLastMessages[4][MSG_MAX_SIZE];
 extern char          gCurrentUserMessage[MSG_MAX_SIZE];
 extern uint8_t       gCurrentMsgWriteIndex;
 extern uint8_t       gReceivedSent;

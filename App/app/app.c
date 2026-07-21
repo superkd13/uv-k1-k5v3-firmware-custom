@@ -43,6 +43,9 @@
 #include "app/generic.h"
 #include "app/main.h"
 #include "app/menu.h"
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    #include "app/rxtx_log.h"
+#endif
 #include "app/scanner.h"
 #if defined(ENABLE_UART) || defined(ENABLE_USB)
     #include "app/uart.h"
@@ -84,8 +87,8 @@
 #include "ui/ui.h"
 #include "ui/welcome.h"
 
-#ifdef ENABLE_FEAT_F4HWN_SCREENSHOT
-    #include "screenshot.h"
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
+    #include "k5viewer.h"
 #endif
 
 static bool flagSaveVfo;
@@ -124,14 +127,12 @@ void (*ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) 
 #ifdef ENABLE_FEAT_KD_MSG
     [DISPLAY_MSG] = &MSG_ProcessKeys,
 #endif
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    [DISPLAY_RXTX_LOG] = &RXTX_LOG_ProcessKeys,
+#endif
 };
 
-#ifdef ENABLE_REGA
-// This is a hack for REGA as I need a special display element only for it with no key
-static_assert(ARRAY_SIZE(ProcessKeysFunctions) == DISPLAY_N_ELEM-1);
-#else
 static_assert(ARRAY_SIZE(ProcessKeysFunctions) == DISPLAY_N_ELEM);
-#endif
 
 #ifdef ENABLE_FEAT_F4HWN_LOGO_SAV
 static uint8_t ScreenSaverRandom(void)
@@ -236,8 +237,8 @@ static void ScreenSaverRenderLogoPlus(bool reset)
 
 static void ScreenSaverUpdateViewer(void)
 {
-#ifdef ENABLE_FEAT_F4HWN_SCREENSHOT
-    SCREENSHOT_Update(false);
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
+    K5VIEWER_Update(false);
 #endif
 }
 
@@ -247,6 +248,9 @@ static bool ScreenSaverCanDisplay(void)
         gEeprom.BACKLIGHT_TIME == 0 ||
         gEeprom.BACKLIGHT_TIME >= 61 ||
         gScreenSaverDisplayed ||
+#ifdef ENABLE_FEAT_F4HWN_SLEEP
+        gWakeUp ||
+#endif
         gCurrentFunction == FUNCTION_TRANSMIT ||
         FUNCTION_IsRx() ||
         gPttIsPressed
@@ -777,6 +781,10 @@ void APP_StartListening(FUNCTION_Type_t function)
 
     FUNCTION_Select(function);
 
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    RXTX_LOG_BeginRx(gRxVfo, function);
+#endif
+
 #ifdef ENABLE_FMRADIO
     if (function == FUNCTION_MONITOR || gFmRadioMode)
 #else
@@ -1134,10 +1142,10 @@ static void HandleVox(void)
 
 void APP_Update(void)
 {
-#ifdef ENABLE_FEAT_F4HWN_SCREENSHOT
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
     // Parse incoming packets on every tick so serial keys are never missed,
     // regardless of whether the screen needs redrawing.
-    SCREENSHOT_ParseInput();
+    K5VIEWER_ParseInput();
 #endif
 
 #ifdef ENABLE_VOICE
@@ -1597,6 +1605,10 @@ void APP_TimeSlice10ms(void)
 
     SETTINGS_SaveVfoIndicesFlush();
 
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    RXTX_LOG_Task10ms();
+#endif
+
     BACKLIGHT_Update();
 
     gFlashLightBlinkCounter++;
@@ -1677,13 +1689,15 @@ void APP_TimeSlice10ms(void)
         UI_DisplayStatus();
     }
 
-    #ifdef ENABLE_FEAT_F4HWN_SCREENSHOT
+    #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
     if (gUpdateDisplayCurrent || gUpdateStatusCurrent
 #ifdef ENABLE_FEAT_F4HWN_LOGO_SAV
         || screenSaverRendered
 #endif
         ) {
-        SCREENSHOT_Update(false);
+        K5VIEWER_Update(false);
+    } else if (K5VIEWER_HasPendingStateChange()) {
+        K5VIEWER_Update(false);
     }
     #endif
 
@@ -1825,6 +1839,10 @@ void APP_TimeSlice500ms(void)
         if (--gKeypadLocked == 0)
             gUpdateDisplay = true;
 
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    RXTX_LOG_Tick500ms();
+#endif
+
 #ifdef ENABLE_FEAT_F4HWN_RX_TX_TIMER
     if (gSetting_set_tmr && (gCurrentFunction == FUNCTION_TRANSMIT || FUNCTION_IsRx())) {
         const uint16_t timerCountdown = (gCurrentFunction == FUNCTION_TRANSMIT)
@@ -1939,6 +1957,9 @@ void APP_TimeSlice500ms(void)
             gBacklightCountdown_500ms = 0;
             gPowerSave_10ms = 1;
             gWakeUp = true;
+#ifdef ENABLE_FEAT_F4HWN_LOGO_SAV
+            ScreenSaverExit();
+#endif
             // TODO:
             // PWM_PLUS0_CH0_COMP = 0;
             BACKLIGHT_SetBrightness(0);
@@ -2310,7 +2331,7 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 #ifdef ENABLE_FEAT_F4HWN // Disable PTT if KEY_LOCK
     bool lck_condition = (gEeprom.KEY_LOCK || lowBatPopup) && gCurrentFunction != FUNCTION_TRANSMIT;
 
-    if(!gSetting_set_lck)
+    if((gSetting_set_lck & SET_LCK_PTT) == 0)
         lck_condition = lck_condition && Key != KEY_PTT;
 
     if (lck_condition)
@@ -2327,6 +2348,12 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             return;
         }
 
+        // The ACTIONS restriction only applies when the keypad is actually
+        // locked: this block is also entered for the low battery popup, where
+        // action keys must keep working as before
+        const bool passActionKey = ((gSetting_set_lck & SET_LCK_ACTIONS) == 0 || !gEeprom.KEY_LOCK) &&
+                                   (Key == KEY_SIDE1 || Key == KEY_SIDE2 || (Key == KEY_MENU && bKeyHeld));
+
         if (Key == KEY_F) { // function/key-lock key
             if (!bKeyPressed)
                 return;
@@ -2341,8 +2368,7 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         // KEY_MENU has a special treatment here, because we want to pass hold event to ACTION_Handle
         // but we don't want it to complain when initial press happens
         // we want to react on realese instead
-        else if (Key != KEY_SIDE1 && Key != KEY_SIDE2 &&        // pass side buttons
-                 !(Key == KEY_MENU && bKeyHeld)) // pass KEY_MENU held
+        else if (!passActionKey)
         {
             if ((!bKeyPressed || bKeyHeld || (Key == KEY_MENU && bKeyPressed)) && // prevent released or held, prevent KEY_MENU pressed
                 !(Key == KEY_MENU && !bKeyPressed))  // pass KEY_MENU released

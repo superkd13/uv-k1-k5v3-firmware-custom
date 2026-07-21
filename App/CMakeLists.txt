@@ -171,10 +171,6 @@ enable_feature(ENABLE_SCAN_RANGES)
 
 # ---- CONTRIB MODS ----
 
-# Thank you @markusb
-enable_feature(ENABLE_REGA
-    app/rega.c
-) 
 # Thank you @reppad
 enable_feature(ENABLE_EXTRA_UART_CMD)
 
@@ -184,8 +180,8 @@ enable_feature(ENABLE_FEAT_F4HWN)
 enable_feature(ENABLE_FEAT_F4HWN_GAME 
     app/breakout.c
 )
-enable_feature(ENABLE_FEAT_F4HWN_SCREENSHOT 
-    screenshot.c
+enable_feature(ENABLE_FEAT_F4HWN_K5VIEWER 
+    k5viewer.c
 )
 enable_feature(ENABLE_FEAT_F4HWN_SPECTRUM)
 enable_feature(ENABLE_FEAT_F4HWN_RX_TX_TIMER)
@@ -215,6 +211,15 @@ enable_feature(ENABLE_FEAT_KD_MSG
     app/msg.c
     ui/msg.c
 )
+enable_feature(ENABLE_FEAT_F4HWN_RXTX_LOG
+    app/rxtx_log.c
+)
+enable_feature(ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP)
+enable_feature(ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER)
+
+if(ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER AND NOT (ENABLE_FEAT_F4HWN_RXTX_LOG AND ENABLE_FEAT_F4HWN_K5VIEWER))
+    message(FATAL_ERROR "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER requires ENABLE_FEAT_F4HWN_RXTX_LOG (log data) and ENABLE_FEAT_F4HWN_K5VIEWER (serial transport).")
+endif()
 
 if(ENABLE_FEAT_F4HWN_BEAM AND NOT ENABLE_AIRCOPY)
     message(FATAL_ERROR "ENABLE_FEAT_F4HWN_BEAM requires ENABLE_AIRCOPY (it reuses g_FSK_Buffer, AIRCOPY_Obfuscate and the FSK packet plumbing).")

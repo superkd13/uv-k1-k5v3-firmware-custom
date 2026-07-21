@@ -19,6 +19,9 @@
 
 #include "am_fix.h"
 #include "app/dtmf.h"
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    #include "app/rxtx_log.h"
+#endif
 #ifdef ENABLE_FMRADIO
     #include "app/fm.h"
 #endif
@@ -1278,6 +1281,10 @@ void RADIO_PrepareTX(void)
 
     FUNCTION_Select(FUNCTION_TRANSMIT);
 
+#ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
+    RXTX_LOG_BeginTx(gCurrentVfo);
+#endif
+
     gTxTimerCountdown_500ms = 0;            // no timeout
 
     #if defined(ENABLE_ALARM) || defined(ENABLE_TX1750)
@@ -1334,7 +1341,16 @@ void RADIO_SendCssTail(void)
 
 void RADIO_SendEndOfTransmission(void)
 {
-    BK4819_PlayRoger();
+    BK4819_FilterBandwidth_t Bandwidth = gCurrentVfo->CHANNEL_BANDWIDTH;
+
+    #ifdef ENABLE_FEAT_F4HWN_NARROWER
+        if(Bandwidth == BK4819_FILTER_BW_NARROW && gSetting_set_nfm == 1)
+        {
+            Bandwidth = BK4819_FILTER_BW_NARROWER;
+        }
+    #endif
+
+    BK4819_PlayRoger(Bandwidth);
     DTMF_SendEndOfTransmission();
 
     // send the CTCSS/DCS tail tone - allows the receivers to mute the usual FM squelch tail/crash

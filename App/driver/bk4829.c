@@ -1148,7 +1148,7 @@ void BK4819_TurnsOffTones_TurnsOnRX(void)
         BK4819_WriteRegister(BK4819_REG_72, MSG_BAUDRATE);    // Tone2 baudrate
         BK4819_WriteRegister(BK4819_REG_58, 0x00C1);    // FSK Enable, FSK 1.2K RX Bandwidth, Preamble 0xAA or 0x55, RX Gain 0, RX Mode
                                                         // (FSK1.2K, FSK2.4K Rx and NOAA SAME Rx), TX Mode FSK 1.2K and FSK 2.4K Tx
-        BK4819_WriteRegister(BK4819_REG_5C, 0x5665);    // Enable CRC among other things we don't know yet
+        BK4819_WriteRegister(BK4819_REG_5C, 0x5625);    // Disable CRC
         BK4819_WriteRegister(BK4819_REG_5D, 0x1700);    // FSK Data Length 24 Bytes (22 byte payload + 2 byte CRC)
         BK4819_WriteRegister(0x5E, 0x3204);
     }

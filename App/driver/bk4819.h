@@ -117,7 +117,7 @@ void     BK4819_TurnsOffTones_TurnsOnRX(void);
     void     BK4819_SetupAircopy(void);
 #endif
 #ifdef ENABLE_FEAT_KD_MSG
-#define MSG_BAUDRATE 0x1779
+#define MSG_BAUDRATE 0x3065
     void     BK4819_SetupMsg(void);
 #endif
 void     BK4819_ResetFSK(void);

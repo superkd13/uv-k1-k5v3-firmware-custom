@@ -33,7 +33,7 @@
 #include "ui/msg.h"
 #include "ui/ui.h"
 
-#define MSG_PACKET_MAGIC   0x0176
+#define MSG_PACKET_MAGIC   0x2718
 
 typedef struct {
     uint16_t magic;
@@ -53,11 +53,11 @@ static const char* const msg_char_map[10] = {
     "wxyz9"                         // KEY_9
 };
 
-static_assert(sizeof(MSG_Payload_t) <= 26);
+static_assert(sizeof(MSG_Payload_t) <= 22);
 
 bool          gMsgActive;
 char          gLastMessages[4][MSG_MAX_SIZE];
-char          gCurrentUserMessage[MSG_MAX_SIZE] = "                "; // mettre le \0 avant le 20e caractère
+char          gCurrentUserMessage[MSG_MAX_SIZE] = " ";
 uint8_t       gCurrentMsgWriteIndex = 0;
 uint8_t       gReceivedSent = 0;
 uint8_t       gSentAck      = 0;
@@ -116,7 +116,7 @@ static void MSG_SendPacket(void)
     strncpy(gLastMessages[1], gLastMessages[2], MSG_MAX_SIZE);
     strncpy(gLastMessages[2], gLastMessages[3], MSG_MAX_SIZE);
     strncpy(gLastMessages[3], gCurrentUserMessage, MSG_MAX_SIZE);
-    strncpy(gCurrentUserMessage, "                 ", MSG_MAX_SIZE); 
+    strncpy(gCurrentUserMessage, " ", MSG_MAX_SIZE); 
 
 }
 
@@ -124,6 +124,10 @@ static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (gCurrentMsgWriteIndex < 15)
     {   
+        if (gCurrentUserMessage[gCurrentMsgWriteIndex] == '\0')
+        {
+            gCurrentUserMessage[gCurrentMsgWriteIndex] = ' ';
+        }
         gCurrentMsgWriteIndex++;
         msg_edit_last_key = 255;
     }
@@ -183,13 +187,7 @@ void MSG_StorePacket(void)
 
     gFSKWriteIndex = 0;
     gUpdateDisplay = true;
-    uint16_t Status = BK4819_ReadRegister(BK4819_REG_0B);
     RADIO_SetupRegisters(true);
-
-    if ((Status & 0x0010U) != 0) {
-        return;
-    }
-
     uint16_t Crc = CRC_Calculate(&g_FSK_Buffer[0], 22);
     if (g_FSK_Buffer[11] != Crc) {
         return;

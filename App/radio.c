@@ -913,6 +913,7 @@ void RADIO_SetupRegisters(bool switchToForeground)
     InterruptMask |= BK4819_REG_3F_DTMF_5TONE_FOUND;
 
 #ifdef ENABLE_FEAT_KD_MSG
+    BK4819_SetupMsg();
     InterruptMask |= BK4819_REG_3F_FSK_RX_FINISHED | BK4819_REG_3F_FSK_FIFO_ALMOST_FULL;
     BK4819_WriteRegister(BK4819_REG_59, 0x4068);
     BK4819_WriteRegister(BK4819_REG_59, 0x3068);

@@ -231,7 +231,9 @@ static void BEAM_KeyMenu(void)
 
 static void BEAM_KeyExit(void)
 {
+#ifdef ENABLE_FEAT_KD_MSG
     BK4819_SetupMsg();
+#endif
     BK4819_ResetFSK();
 
     if (gBeamMode == BEAM_MODE_RX && gBeamCopiedChannel != 0xFFFFu) {

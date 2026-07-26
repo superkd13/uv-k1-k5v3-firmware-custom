@@ -70,6 +70,7 @@ static void MSG_KeyExit(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (bKeyHeld)
     {
+        BK4819_ResetFSK();
         RADIO_SelectVfos();
         RADIO_SetupRegisters(true);
 

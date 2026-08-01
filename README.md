@@ -285,6 +285,17 @@ Examples:
 ./compile-with-docker.sh Fusion -DSQL_TONE=600
 ```
 
+To prepare the rolling development firmware:
+
+```bash
+./compile-with-docker.sh Fusion -DDEV=ON
+```
+
+This keeps the regular build output in `build/Fusion` and also updates
+`archive/f4hwn.fusion.development.bin`. The development build is identified as
+`DEV` in the firmware information screen. Publishing the updated archive file
+remains an explicit Git operation.
+
 ### Notes
 
 - The first run may take a few minutes while Docker builds the base image.

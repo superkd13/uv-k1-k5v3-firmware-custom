@@ -105,7 +105,7 @@ static void toggle_chan_scanlist(void)
 
         gTxVfo->SCANLIST_PARTICIPATION = scanlist;
 
-        SETTINGS_UpdateChannel(gTxVfo->CHANNEL_SAVE, gTxVfo, true, true, true);
+        SETTINGS_UpdateChannel(gTxVfo->CHANNEL_SAVE, gTxVfo, true);
     }
 
     gVfoConfigureMode = VFO_CONFIGURE;

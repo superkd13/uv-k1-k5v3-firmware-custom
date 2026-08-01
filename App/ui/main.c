@@ -140,7 +140,7 @@ static void UI_MAIN_DrawBeamLine(void)
 }
 #endif
 
-const char *VfoStateStr[] = {
+const char *const VfoStateStr[] = {
        [VFO_STATE_NORMAL]="",
        [VFO_STATE_BUSY]="BUSY",
        [VFO_STATE_BAT_LOW]="BAT LOW",
@@ -1593,11 +1593,6 @@ void UI_DisplayMain(void)
 #endif
         }
 
-#if defined(ENABLE_FEAT_F4HWN_SCAN_FASTER) && defined(ENABLE_FEAT_F4HWN_SCAN_RSSI)
-        if (vfo_num == gEeprom.RX_VFO && gScanStateDir != SCAN_OFF && !FUNCTION_IsRx())
-            UI_MAIN_DrawScanRssiSparkline(line);
-#endif
-
         if((gScanStateDir == SCAN_OFF || vfo_num != gEeprom.RX_VFO) && TX_freq_check(frequency) != 0 && gEeprom.VfoInfo[vfo_num].TX_LOCK == true)
         {
             if (!FUNCTION_IsRx() || RxOnVfofrequency != frequency)
@@ -1781,8 +1776,6 @@ void UI_DisplayMain(void)
 #endif
 
                 #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
-                {
-                    }
                 }
                 #endif
 
@@ -2110,7 +2103,11 @@ void UI_DisplayMain(void)
             #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
                 const char dir_list[][2] = {"", "+", "-", "D"};
 
-                if(gTxVfo->TX_OFFSET_FREQUENCY_DIRECTION != 0 && gTxVfo->pTX == &gTxVfo->freq_config_RX && !vfoInfo->FrequencyReverse)
+                if(gRemoveOffset &&
+                   vfoInfo == gTxVfo &&
+                   gTxVfo->TX_OFFSET_FREQUENCY_DIRECTION != 0 &&
+                   gTxVfo->pTX == &gTxVfo->freq_config_RX &&
+                   !vfoInfo->FrequencyReverse)
                 {
                     i = 3;
                 }
@@ -2252,6 +2249,11 @@ void UI_DisplayMain(void)
         }
 #endif
     }
+
+#if defined(ENABLE_FEAT_F4HWN_SCAN_FASTER) && defined(ENABLE_FEAT_F4HWN_SCAN_RSSI)
+    if (gScanStateDir != SCAN_OFF && !FUNCTION_IsRx())
+        UI_MAIN_DrawScanRssiSparkline(isMainOnly() ? 0 : (uint8_t)(gEeprom.RX_VFO * 4u));
+#endif
 
 #ifdef ENABLE_AGC_SHOW_DATA
     center_line = CENTER_LINE_IN_USE;

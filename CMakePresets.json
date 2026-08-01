@@ -9,6 +9,7 @@
             "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "DEV": false,
                 "ENABLE_LTO": false,
                 "ENABLE_FMRADIO": false,
                 "ENABLE_UART": true,
@@ -72,6 +73,7 @@
                 "ENABLE_FEAT_F4HWN_SCAN_RSSI": false,
                 "ENABLE_FEAT_F4HWN_SCAN_SUBAUDIBLE": false,
                 "ENABLE_FEAT_F4HWN_BEAM": false,
+                "ENABLE_FEAT_F4HWN_FOXHUNT": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER": false,
@@ -81,7 +83,7 @@
                 "ENABLE_UART_RW_BK_REGS": false,
                 "ENABLE_SWD": false,
                 "VERSION_STRING_1": "v0.22",
-                "VERSION_STRING_2": "v5.7.0"
+                "VERSION_STRING_2": "v5.7.1"
             }
         },
         {
@@ -206,7 +208,8 @@
                 "ENABLE_FEAT_F4HWN_SCAN_RSSI": true,
                 "ENABLE_FEAT_F4HWN_SCAN_SUBAUDIBLE": true,
                 "ENABLE_FEAT_F4HWN_BEAM": true,
-                "ENABLE_FEAT_KD_MSG": false,
+                "ENABLE_FEAT_KD_MSG": true,
+                "ENABLE_FEAT_F4HWN_FOXHUNT": true,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG": true,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER": true,

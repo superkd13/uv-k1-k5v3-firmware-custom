@@ -41,8 +41,8 @@ typedef struct {
 } MSG_Payload_t;
 
 static const char* const msg_char_map[10] = {
-    " 0",                           // KEY_0
-    ".,-()@/\\+=*#<>[]~1",          // KEY_1
+    " :0",                          // KEY_0
+    ".,-()@/\\+=*#<>[]1",           // KEY_1
     "abc2",                         // KEY_2
     "def3",                         // KEY_3
     "ghi4",                         // KEY_4

@@ -25,7 +25,9 @@
     #include "app/fm.h"
 #endif
 #include "app/scanner.h"
-#include "app/msg.h"
+#ifdef ENABLE_FEAT_KD_MSG
+    #include "app/msg.h"
+#endif
 #include "bitmaps.h"
 #include "driver/keyboard.h"
 #include "driver/st7565.h"

@@ -29,6 +29,7 @@
 #include "../driver/bk4819.h"
 #include "../driver/gpio.h"
 #include "../driver/keyboard.h"
+#include "../driver/py25q16.h"
 #include "../driver/st7565.h"
 #include "../driver/system.h"
 #include "../driver/systick.h"

@@ -18,6 +18,10 @@
 #include "audio.h"
 #include "misc.h"
 
+#if defined(ENABLE_UART) || defined(ENABLE_USB)
+#include "app/uart.h"
+#endif
+
 #ifdef ENABLE_SCAN_RANGES
 #include "chFrScanner.h"
 #endif
@@ -2608,6 +2612,9 @@ void APP_RunSpectrum()
 
     while (isInitialized)
     {
+#if defined(ENABLE_UART) || defined(ENABLE_USB)
+        UART_ServiceCommands();
+#endif
         Tick();
     }
 

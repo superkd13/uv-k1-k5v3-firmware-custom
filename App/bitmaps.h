@@ -51,6 +51,8 @@ extern const uint8_t BITMAP_NOAA[12];
     extern const uint8_t BITMAP_FoxHuntUp[11];
     extern const uint8_t BITMAP_FoxHuntDown[11];
     extern const uint8_t BITMAP_FoxHuntFlat[11];
+    extern const uint8_t BITMAP_FoxHuntBars[11];
+    extern const uint8_t BITMAP_FoxHuntGraph[15];
 #endif
 
 #ifndef ENABLE_CUSTOM_MENU_LAYOUT

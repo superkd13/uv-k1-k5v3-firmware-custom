@@ -225,6 +225,12 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
         case KEY_4:
             HideFKeyIcon();
 
+            if (gScanStateDir != SCAN_OFF) {
+                // Stop the channel/frequency scan before saving the RX mode for Close Call.
+                gScanKeepResult = false;
+                CHFRSCANNER_Stop();
+            }
+
             gBackup_CROSS_BAND_RX_TX  = gEeprom.CROSS_BAND_RX_TX;
             gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;     
 

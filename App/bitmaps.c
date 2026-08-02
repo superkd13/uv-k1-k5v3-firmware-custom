@@ -374,6 +374,28 @@ const uint8_t BITMAP_FoxHuntFlat[11] =
     0b00010010,
     0b00010010
 };
+
+const uint8_t BITMAP_FoxHuntBars[11] =
+{   // ascending bars = S-meter (staircase) gauge mode (bit0 = top row)
+    0b01000000, 
+    0b01000000, 
+    0b00000000,
+    0b01110000, 
+    0b01110000, 
+    0b00000000,
+    0b01111100, 
+    0b01111100, 
+    0b00000000,
+    0b01111111, 
+    0b01111111
+};
+
+const uint8_t BITMAP_FoxHuntGraph[15] =
+{   // sine wave = signal-history gauge mode (bit0 = top row)
+    0b00001000, 0b00000100, 0b00000010, 0b00000100, 0b00001000,
+    0b00010000, 0b00100000, 0b00010000, 0b00001000, 0b00000100,
+    0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000
+};
 #endif
 
 #ifndef ENABLE_CUSTOM_MENU_LAYOUT

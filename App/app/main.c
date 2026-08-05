@@ -924,6 +924,12 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
             return;
         }               
 #endif
+        if (gScanStateDir != SCAN_OFF) {
+            // Stop the channel/frequency scan before saving the RX mode for the CTCSS/DCS scan.
+            gScanKeepResult = false;
+            CHFRSCANNER_Stop();
+        }
+
         // scan the CTCSS/DCS code
         gBackup_CROSS_BAND_RX_TX  = gEeprom.CROSS_BAND_RX_TX;
         gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;

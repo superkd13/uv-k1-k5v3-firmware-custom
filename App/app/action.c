@@ -434,6 +434,12 @@ void ACTION_FM(void)
 
         gMonitor = false;
 
+        if (gScanStateDir != SCAN_OFF) {
+            // Stop the channel/frequency scan before switching to the FM radio.
+            gScanKeepResult = false;
+            CHFRSCANNER_Stop();
+        }
+
         RADIO_SelectVfos();
         RADIO_SetupRegisters(true);
 

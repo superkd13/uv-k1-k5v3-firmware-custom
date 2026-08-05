@@ -51,10 +51,10 @@ static const AddrMapping_t ADDR_MAPPINGS[] = {
     _MK_MAPPING(0x008000, 0x008000, 0x00886E),  // 1024 MR  + 7 VFO Attributes * 2 Bytes (ex 0x002000) 0x008000 -> 0x00880E
                                                 // List name * 4 Bytes 0x00880E -> 0x00886E
 
-    _MK_MAPPING(0x009000, 0x009000, 0x0090E5),  // 14 VFO * 16 Bytes = 0x9000 -> 0x90E0 (the old
+    _MK_MAPPING(0x009000, 0x009000, 0x0090E7),  // 14 VFO * 16 Bytes = 0x9000 -> 0x90E0 (the old
                                                 // 0x90D6 bound was 10 B short: it truncated the
                                                 // 470 MHz VFO1 record at 0x90D0 -> 0x90DF)
-                                                // Fox Hunt settings * 5 Bytes       0x90E0 -> 0x90E5
+                                                // Fox Hunt settings * 7 Bytes       0x90E0 -> 0x90E7
                                                 // (ENABLE_FEAT_F4HWN_FOXHUNT, written directly by
                                                 // app/foxhunt.c; concatenated here so aircopy clones
                                                 // them together with the VFOs)

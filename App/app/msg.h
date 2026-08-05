@@ -23,8 +23,11 @@
 #include <stdint.h>
 
 #include "driver/keyboard.h"
+#include "driver/system.h"
 
 #define MSG_MAX_SIZE       20
+#define MSG_SENDING         4
+#define MSG_NO_TX           5
 
 extern bool          gMsgActive;
 extern char          gLastMessages[4][MSG_MAX_SIZE];

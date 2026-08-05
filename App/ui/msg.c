@@ -48,8 +48,10 @@ void UI_DisplayMsg(void)
     UI_PrintStringSmallNormal(gLastMessages[3], 16, 0, 4);
     UI_PrintStringSmallNormal(":", 3, 0, 5);
 
-    if (gReceivedSent & (1 << 4))
+    if (gReceivedSent & (1 << MSG_SENDING))
         UI_PrintStringSmallBold(" SENDING ...", 12, 0, 5);
+    else if (gReceivedSent & (1 << MSG_NO_TX))
+        UI_PrintStringSmallBold(" TX LOCK", 12, 0, 5);
     else
         UI_PrintStringSmallNormal(gCurrentUserMessage, 12, 0, 5);
 

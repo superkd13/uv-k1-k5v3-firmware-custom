@@ -95,7 +95,7 @@ static void MSG_SendPacket(void)
 
     g_FSK_Buffer[11] = CRC_Calculate(&g_FSK_Buffer[0], 22);
 
-    gReceivedSent |= (1 << 4);
+    gReceivedSent |= (1 << MSG_SENDING);
     UI_DisplayMsg();
     ST7565_BlitFullScreen();
 
@@ -121,6 +121,21 @@ static void MSG_SendPacket(void)
 
 }
 
+static VfoState_t MSG_TxState(void)
+{
+    if (TX_freq_check(gTxVfo->pTX->Frequency) != 0 && gTxVfo->TX_LOCK)
+        return VFO_STATE_TX_DISABLE;
+    if (gBatteryDisplayLevel == 0)
+        return VFO_STATE_BAT_LOW;
+    if (gBatteryDisplayLevel > 6)
+        return VFO_STATE_VOLTAGE_HIGH;
+#ifndef ENABLE_TX_WHEN_AM
+    if (gTxVfo->Modulation != MODULATION_FM)
+        return VFO_STATE_TX_DISABLE;
+#endif
+    return VFO_STATE_NORMAL;
+}
+
 static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (gCurrentMsgWriteIndex < 15)
@@ -132,11 +147,23 @@ static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         gCurrentMsgWriteIndex++;
         msg_edit_last_key = 255;
     }
+    VfoState_t state = MSG_TxState();
     if (bKeyHeld) {
-        gCurrentMsgWriteIndex = 0;
-        BK4819_SetupMsg();
-        BK4819_ResetFSK();
-        MSG_SendPacket();
+        if (state == VFO_STATE_NORMAL)
+        {
+            gCurrentMsgWriteIndex = 0;
+            BK4819_SetupMsg();
+            BK4819_ResetFSK();
+            MSG_SendPacket();
+        }
+        else 
+        {
+            gReceivedSent |= (1 << MSG_NO_TX);
+            UI_DisplayMsg();
+            ST7565_BlitFullScreen();
+            SYSTEM_DelayMs(1000);
+            gReceivedSent -= (1 << MSG_NO_TX);
+        }
     }
 }
 
@@ -170,14 +197,9 @@ static void MSG_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
 void ACTION_Msg(void)
 {
-    if (gTxVfo->Modulation == MODULATION_AM)
-        gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
-    else
-    {
-        gMsgActive = true;
-        gUnreadMessage = false;
-        GUI_SelectNextDisplay(DISPLAY_MSG);
-    }
+    gMsgActive = true;
+    gUnreadMessage = false;
+    GUI_SelectNextDisplay(DISPLAY_MSG);
 }
 
 void MSG_StorePacket(void)

@@ -1416,11 +1416,9 @@ void APP_Update(void)
 
         }
         else
-        if (1
 #ifdef ENABLE_FEAT_F4HWN_BEAM
-        && !gBeamActive
+        if(!gBeamActive)
 #endif
-        )
         {
             // toggle between the two VFO's
             DualwatchAlternate();

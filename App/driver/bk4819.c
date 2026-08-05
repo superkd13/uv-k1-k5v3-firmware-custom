@@ -1107,6 +1107,18 @@ void BK4819_TurnsOffTones_TurnsOnRX(void)
     }
 #endif
 
+#ifdef ENABLE_FEAT_KD_MSG
+    void BK4819_SetupMsg(void)
+    {
+        BK4819_WriteRegister(BK4819_REG_70, 0x00E0);    // Enable Tone2, tuning gain 48
+        BK4819_WriteRegister(BK4819_REG_72, MSG_BAUDRATE);    // Tone2 baudrate 
+        BK4819_WriteRegister(BK4819_REG_58, 0x00C1);    // FSK Enable, FSK 1.2K RX Bandwidth, Preamble 0xAA or 0x55, RX Gain 0, RX Mode
+                                                        // (FSK1.2K, FSK2.4K Rx and NOAA SAME Rx), TX Mode FSK 1.2K and FSK 2.4K Tx
+        BK4819_WriteRegister(BK4819_REG_5C, 0x5665);    // Enable CRC among other things we don't know yet
+        BK4819_WriteRegister(BK4819_REG_5D, 0x1F00);    // FSK Data Length 32 Bytes (0xabcd + 26 byte payload + 2 byte CRC + 0xdcba)
+    }
+#endif
+
 void BK4819_ResetFSK(void)
 {
     BK4819_WriteRegister(BK4819_REG_3F, 0x0000);        // Disable interrupts
@@ -1688,6 +1700,34 @@ void BK4819_SendFSKData(uint16_t *pData)
     BK4819_WriteRegister(BK4819_REG_59, 0x0068);
 
     for (i = 0; i < 36; i++)
+        BK4819_WriteRegister(BK4819_REG_5F, pData[i]);
+
+    SYSTEM_DelayMs(20);
+
+    BK4819_WriteRegister(BK4819_REG_59, 0x2868);
+
+    while (Timeout-- && (BK4819_ReadRegister(BK4819_REG_0C) & 1u) == 0)
+        SYSTEM_DelayMs(5);
+
+    BK4819_WriteRegister(BK4819_REG_02, 0);
+
+    SYSTEM_DelayMs(20);
+
+    BK4819_ResetFSK();
+}
+
+void BK4819_SendFSKDataMsg(uint16_t *pData, uint8_t payload_size)
+{
+    unsigned int i;
+    uint8_t Timeout = 200;
+
+    SYSTEM_DelayMs(20);
+
+    BK4819_WriteRegister(BK4819_REG_3F, BK4819_REG_3F_FSK_TX_FINISHED);
+    BK4819_WriteRegister(BK4819_REG_59, 0x8068);
+    BK4819_WriteRegister(BK4819_REG_59, 0x0068);
+
+    for (i = 0; i < payload_size; i++)
         BK4819_WriteRegister(BK4819_REG_5F, pData[i]);
 
     SYSTEM_DelayMs(20);

@@ -27,6 +27,10 @@
 #ifdef ENABLE_FEAT_F4HWN_BEAM
     #include "app/beam.h"
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+    #include "app/msg.h"
+    #include "ui/msg.h"
+#endif
 #include "app/app.h"
 #include "app/chFrScanner.h"
 #include "app/dtmf.h"
@@ -120,6 +124,9 @@ void (*const ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKey
     [DISPLAY_AIRCOPY] = &AIRCOPY_ProcessKeys,
 #endif
 
+#ifdef ENABLE_FEAT_KD_MSG
+    [DISPLAY_MSG] = &MSG_ProcessKeys,
+#endif
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     [DISPLAY_RXTX_LOG] = &RXTX_LOG_ProcessKeys,
 #endif
@@ -1027,6 +1034,20 @@ static void CheckRadioInterrupts(void)
             BEAM_StorePacket();
         }
 #endif
+
+#ifdef ENABLE_FEAT_KD_MSG
+        if (gScreenToDisplay != DISPLAY_AIRCOPY && !gBeamActive && (interrupts.fskFifoAlmostFull || interrupts.fskRxFinied))
+        {
+            const unsigned int wordsToRead = 4;
+            for (unsigned int i = 0; i < wordsToRead; i++) {
+                const uint16_t word = BK4819_ReadRegister(BK4819_REG_5F);
+                if (gFSKWriteIndex < 16)
+                    g_FSK_Buffer[gFSKWriteIndex++] = word;
+            }
+
+            MSG_StorePacket();
+        }
+#endif
     }
 }
 
@@ -1396,7 +1417,7 @@ void APP_Update(void)
         }
         else
 #ifdef ENABLE_FEAT_F4HWN_BEAM
-        if (!gBeamActive)
+        if(!gBeamActive)
 #endif
         {
             // toggle between the two VFO's

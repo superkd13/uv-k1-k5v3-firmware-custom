@@ -27,6 +27,9 @@
 #ifdef ENABLE_AIRCOPY
     #include "ui/aircopy.h"
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+    #include "ui/msg.h"
+#endif
 #ifdef ENABLE_FMRADIO
     #include "ui/fmradio.h"
 #endif
@@ -63,6 +66,10 @@ void (*const UI_DisplayFunctions[])(void) = {
 
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     [DISPLAY_RXTX_LOG] = &UI_DisplayRxTxLog,
+#endif
+
+#ifdef ENABLE_FEAT_KD_MSG
+    [DISPLAY_MSG] = &UI_DisplayMsg,
 #endif
 };
 

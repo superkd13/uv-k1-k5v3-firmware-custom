@@ -117,6 +117,10 @@ void     BK4819_TurnsOffTones_TurnsOnRX(void);
 #ifdef ENABLE_AIRCOPY
     void     BK4819_SetupAircopy(void);
 #endif
+#ifdef ENABLE_FEAT_KD_MSG
+#define MSG_BAUDRATE 0x3065
+    void     BK4819_SetupMsg(void);
+#endif
 void     BK4819_ResetFSK(void);
 void     BK4819_Idle(void);
 #ifdef ENABLE_BYP_RAW_DEMODULATORS
@@ -168,6 +172,7 @@ uint8_t  BK4819_GetCTCShift(void);
 uint8_t  BK4819_GetCTCType(void);
 
 void     BK4819_SendFSKData(uint16_t *pData);
+void     BK4819_SendFSKDataMsg(uint16_t *pData, uint8_t payload_size);
 void     BK4819_PrepareFSKReceive(void);
 
 void     BK4819_PlayRoger(BK4819_FilterBandwidth_t Bandwidth);

@@ -25,6 +25,9 @@
     #include "app/fm.h"
 #endif
 #include "app/scanner.h"
+#ifdef ENABLE_FEAT_KD_MSG
+    #include "app/msg.h"
+#endif
 #include "bitmaps.h"
 #include "driver/keyboard.h"
 #include "driver/st7565.h"
@@ -178,6 +181,8 @@ void UI_DisplayStatus()
             x1 = x + 10;
         }
     }
+    
+    
     x += 10;  // font character width
 
     #ifdef ENABLE_FEAT_F4HWN_DEBUG
@@ -248,6 +253,13 @@ void UI_DisplayStatus()
         memcpy(line + x, gFontVox, sizeof(gFontVox));
         x1 = x + sizeof(gFontVox) + 1;
     }
+#ifdef ENABLE_FEAT_KD_MSG
+    else if(gUnreadMessage)
+    {
+        memcpy(line + x + 2, BITMAP_UNREADMSG, sizeof(BITMAP_UNREADMSG));
+        x1 = x + sizeof(gFontVox) + 1; // intended
+    }
+#endif
     x += sizeof(gFontVox) + 3;
 #endif
 

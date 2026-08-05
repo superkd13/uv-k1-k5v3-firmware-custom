@@ -208,6 +208,7 @@
                 "ENABLE_FEAT_F4HWN_SCAN_RSSI": true,
                 "ENABLE_FEAT_F4HWN_SCAN_SUBAUDIBLE": true,
                 "ENABLE_FEAT_F4HWN_BEAM": true,
+                "ENABLE_FEAT_KD_MSG": false,
                 "ENABLE_FEAT_F4HWN_FOXHUNT": true,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG": true,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP": false,
@@ -219,6 +220,15 @@
                 "ENABLE_SWD": true,
                 "EDITION_STRING": "Fusion",
                 "TARGET": "f4hwn.fusion"
+            }
+        },
+        {
+            "name": "MSG",
+            "inherits": "Fusion",
+            "cacheVariables": {
+                "ENABLE_FEAT_KD_MSG": true,
+                "EDITION_STRING": "Fusion-MSG",
+                "TARGET": "f4hwn.fusion_msg"
             }
         }
     ],
@@ -250,6 +260,10 @@
         {
             "name": "Fusion",
             "configurePreset": "Fusion"
+        },
+        {
+            "name": "MSG",
+            "configurePreset": "MSG"
         }
     ]
 }

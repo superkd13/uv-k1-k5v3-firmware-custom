@@ -208,6 +208,10 @@ enable_feature(ENABLE_FEAT_F4HWN_MEM)
 enable_feature(ENABLE_FEAT_F4HWN_BEAM
     app/beam.c
 )
+enable_feature(ENABLE_FEAT_KD_MSG
+    app/msg.c
+    ui/msg.c
+)
 enable_feature(ENABLE_FEAT_F4HWN_RXTX_LOG
     app/rxtx_log.c
 )

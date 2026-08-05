@@ -442,3 +442,17 @@ const uint8_t BITMAP_CurrentIndicator[8] = {
     0x18
 };
 #endif
+
+#ifdef ENABLE_FEAT_KD_MSG
+const uint8_t BITMAP_UNREADMSG[8] =
+{	// message icon (from kamil)
+	0b00000000,
+	0b01111110,
+	0b01000110,
+	0b01001010,
+	0b01010010,
+	0b01001010,
+	0b01000110,
+	0b01111110,
+};
+#endif

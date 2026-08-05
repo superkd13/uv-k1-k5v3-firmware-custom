@@ -1752,6 +1752,7 @@ void BK4819_SendFSKData(uint16_t *pData)
     BK4819_ResetFSK();
 }
 
+#ifdef ENABLE_FEAT_KD_MSG
 void BK4819_SendFSKDataMsg(uint16_t *pData, uint8_t payload_size)
 {
     unsigned int i;
@@ -1779,6 +1780,7 @@ void BK4819_SendFSKDataMsg(uint16_t *pData, uint8_t payload_size)
 
     BK4819_ResetFSK();
 }
+#endif
 
 void BK4819_PrepareFSKReceive(void)
 {

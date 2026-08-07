@@ -138,33 +138,26 @@ static VfoState_t MSG_TxState(void)
 
 static void MSG_KeyMenu(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    if (gCurrentMsgWriteIndex < 15)
-    {   
-        if (gCurrentUserMessage[gCurrentMsgWriteIndex] == '\0')
-        {
-            gCurrentUserMessage[gCurrentMsgWriteIndex] = ' ';
-        }
-        gCurrentMsgWriteIndex++;
-        msg_edit_last_key = 255;
-    }
     VfoState_t state = MSG_TxState();
-    if (bKeyHeld) {
-        if (state == VFO_STATE_NORMAL)
-        {
+    if (state == VFO_STATE_NORMAL)
+    {
+        if (gCurrentMsgWriteIndex < 15)
+        {   
+            if (gCurrentUserMessage[gCurrentMsgWriteIndex] == '\0')
+            {
+                gCurrentUserMessage[gCurrentMsgWriteIndex] = ' ';
+            }
+            gCurrentMsgWriteIndex++;
+            msg_edit_last_key = 255;
+        }
+        if (bKeyHeld) {
             gCurrentMsgWriteIndex = 0;
             BK4819_SetupMsg();
             BK4819_ResetFSK();
             MSG_SendPacket();
         }
-        else 
-        {
-            gReceivedSent |= (1 << MSG_NO_TX);
-            UI_DisplayMsg();
-            ST7565_BlitFullScreen();
-            SYSTEM_DelayMs(1000);
-            gReceivedSent -= (1 << MSG_NO_TX);
-        }
     }
+    else gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;  
 }
 
 static void MSG_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
@@ -199,6 +192,10 @@ void ACTION_Msg(void)
 {
     gMsgActive = true;
     gUnreadMessage = false;
+    if (MSG_TxState() != VFO_STATE_NORMAL)
+        gReceivedSent |= (1 << MSG_NO_TX);
+    else if(gReceivedSent & (1 << MSG_NO_TX))
+        gReceivedSent -= (1 << MSG_NO_TX);
     GUI_SelectNextDisplay(DISPLAY_MSG);
 }
 

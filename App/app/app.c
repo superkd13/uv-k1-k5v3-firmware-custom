@@ -2626,7 +2626,10 @@ Skip:
         gFlagRefreshSetting = false;
         gMenuCountdown      = menu_timeout_500ms;
 
-        MENU_ShowCurrentSetting();
+#ifdef ENABLE_FEAT_F4HWN_MENU_CAT
+        if (gMenuLevel != MENU_LEVEL_CAT)
+#endif
+            MENU_ShowCurrentSetting();
     }
 
     if (gFlagPrepareTX) {

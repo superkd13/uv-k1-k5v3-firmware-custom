@@ -143,6 +143,9 @@ void (*const action_opt_table[])(void) = {
 #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
     [ACTION_OPT_FOXHUNT] = &ACTION_FoxHunt,
 #endif
+#ifdef ENABLE_SUPERF
+    [ACTION_OPT_SUPERF] = &ACTION_SuperF,
+#endif
 };
 
 static_assert(ARRAY_SIZE(action_opt_table) == ACTION_OPT_LEN);
@@ -391,6 +394,9 @@ void ACTION_Handle(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     #endif
     #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
             case ACTION_OPT_FOXHUNT:
+    #endif
+    #ifdef ENABLE_SUPERF
+            case ACTION_OPT_SUPERF:
     #endif
                 gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
                 return;

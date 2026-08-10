@@ -23,6 +23,7 @@
 #include "driver/st7565.h"
 #include "external/printf/printf.h"
 #include "misc.h"
+#include "radio.h"
 #include "settings.h"
 #include "ui/fmradio.h"
 #include "ui/helper.h"
@@ -79,6 +80,27 @@ void UI_DisplayFM(void)
     }
 
     UI_PrintString(pPrintStr, 0, 127, 3, 10); // memory, vfo, scan
+
+    if (gEeprom.FM_IsMrMode) 
+    {
+        uint32_t channelF = gEeprom.FM_FrequencyPlaying * 10000;
+        char channelName[12];
+        channelName[0] = 0;
+        unsigned int i;
+        for (i = 0; IS_MR_CHANNEL(i); i++)
+        {
+            if (RADIO_CheckValidChannel(i, false, 0))
+            {
+                if (SETTINGS_FetchChannelFrequency(i) == channelF)
+                {
+                    SETTINGS_FetchChannelName(channelName, i);
+                    break;
+                }
+            }
+        }
+        if (!(channelName[0] == 0))
+            UI_PrintStringSmallBold(channelName, 0, 127, 5);
+    }
 
     if (gAskToSave || (gEeprom.FM_IsMrMode && gInputBoxIndex > 0)) {
         UI_GenerateChannelString(String, gFM_ChannelPosition);

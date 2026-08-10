@@ -79,6 +79,7 @@
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER": false,
                 "ENABLE_FEAT_F4HWN_LOGO": false,
                 "ENABLE_FEAT_F4HWN_LOGO_SAV": false,
+                "ENABLE_FEAT_F4HWN_MENU_CAT": false,
                 "ENABLE_AGC_SHOW_DATA": false,
                 "ENABLE_UART_RW_BK_REGS": false,
                 "ENABLE_SWD": false,
@@ -216,6 +217,7 @@
                 "ENABLE_FEAT_F4HWN_MEM": true,
                 "ENABLE_FEAT_F4HWN_LOGO": true,
                 "ENABLE_FEAT_F4HWN_LOGO_SAV": true,
+                "ENABLE_FEAT_F4HWN_MENU_CAT": true,
                 "ENABLE_SWD": true,
                 "EDITION_STRING": "Fusion",
                 "TARGET": "f4hwn.fusion"

@@ -240,6 +240,20 @@ void UI_MAIN_NotifyScanListChanged(void)
     gUpdateDisplay = true;
 }
 
+// True while the "SCAN LIST xxx" name actually occupies the screen. Used to
+// freeze the scan so it does not race ahead of the (hidden) progress gauge,
+// which would make the bar snap forward when it reappears.
+//
+// The IS_MR_CHANNEL() test mirrors show_memory in UI_DrawScanProgress(): the
+// name is only ever drawn during a memory (channel) scan. A frequency/range
+// scan can still arm the countdown (F + UP/DOWN cycles lists on any scan), but
+// no name is shown there, so it must NOT be held - otherwise the scanner would
+// stall ~2 s with nothing on screen to explain the pause.
+bool UI_MAIN_ShouldHoldScanResume(void)
+{
+    return gScanListNameCountdown_500ms > 0 && IS_MR_CHANNEL(gNextMrChannel);
+}
+
 static inline void ScanProgress_SetBit(uint8_t *map, uint16_t ch)
 {
     map[ch >> 3] |= (uint8_t)(1u << (ch & 7));

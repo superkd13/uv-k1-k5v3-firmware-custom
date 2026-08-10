@@ -44,6 +44,14 @@
 #define FOXHUNT_TICK_MS      50
 #define FOXHUNT_TREND_TICKS  20   // compare the level roughly once per second
 
+// Keypad lock: hold F for ~0.5 s to toggle it, mirroring the long-press F gesture of the
+// main screen. Tracked as an elapsed-time accumulator (not a tick count) so the same hold
+// fires in every loop — the 50 ms hunt/idle ticks and the 10 ms TX slices alike — letting
+// the pad be locked or unlocked at any moment, mid-burst included. While locked every key
+// is swallowed except this hold (and, in the hunt, the attenuation arrows), so a radio
+// carried by a child cannot be knocked out of the mode or its settings changed.
+#define FOXHUNT_LOCK_HOLD_MS 500
+
 // Signal-history graph: a full-width scrolling trace of the level over the last
 // seconds, on the same 13-level S scale as the staircase (FOXHUNT_FillCount). It is
 // an alternate main gauge, toggled with the 2 key. The reading is EMA-smoothed each
@@ -155,6 +163,9 @@ static const uint8_t FOXHUNT_ATT_DB[FOXHUNT_ATT_BYP0] = {0, 6, 15, 27};   // PGA
 static KeyboardState kbd = {KEY_INVALID, KEY_INVALID, 0};
 
 static bool    foxRunning;
+static bool     foxLocked;     // keypad lock (long-press F toggles it, hunt + beacon)
+static uint16_t fHoldMs;       // elapsed time the F key has been held (ms)
+static bool     fLongDone;     // the long-press lock toggle already fired this hold
 static uint8_t foxAudioMode;
 static uint8_t foxGraphMode;   // FOXHUNT_GRAPH_BAR / _HIST, cycled by the 2 key
 static uint8_t attStep;
@@ -411,12 +422,14 @@ static void FOXHUNT_Tag(const char *s, uint8_t x, uint8_t line)
     GUI_DisplaySmallestInverse(s, x, line, false, true, (uint8_t)(x + strlen(s) * 4));
 }
 
-// Mirror the firmware's status-bar F indicator: when the F key is armed, a number key
-// steps its setting backwards. Same glyph and column as the main screens (status.c), so
-// it reads identically — Fox Hunt just renders its own status line, hence the redraw.
+// Mirror the firmware's status-bar indicator at the same column as the main screens
+// (status.c), so it reads identically: the padlock when the keypad is locked, else the
+// F glyph when the reverse-step arm is set. Lock takes priority, exactly as on status.c.
 static void FOXHUNT_DrawFKey(void)
 {
-    if (gWasFKeyPressed)
+    if (foxLocked)
+        memcpy(gStatusLine + 69, gFontKeyLock, sizeof(gFontKeyLock));
+    else if (gWasFKeyPressed)
         memcpy(gStatusLine + 69, gFontF, sizeof(gFontF));
 }
 
@@ -692,16 +705,55 @@ static void FOXHUNT_IdleHousekeeping(void)
         BACKLIGHT_TurnOff();
 }
 
+// Track a held F key and toggle the keypad lock once it crosses the long-press threshold.
+// Fed the time elapsed since the last call (a hunt/idle tick, or a TX slice), so it fires
+// after the same ~0.5 s hold in every loop and the pad can be (un)locked at any moment. A
+// non-F key resets the accumulator; the toggle fires once per physical hold. Returns true
+// exactly on the toggle so a caller that does not redraw every tick (the TX loop) can
+// refresh the padlock immediately.
+static bool FOXHUNT_LockHoldTrack(KEY_Code_t key, uint16_t elapsedMs)
+{
+    if (key != KEY_F) {
+        fHoldMs   = 0;
+        fLongDone = false;
+        return false;
+    }
+    if (fLongDone)                          // already toggled once for this hold
+        return false;
+    fHoldMs += elapsedMs;
+    if (fHoldMs < FOXHUNT_LOCK_HOLD_MS)
+        return false;
+
+    fLongDone       = true;
+    foxLocked       = !foxLocked;
+    gWasFKeyPressed = false;                // a lock toggle is not a reverse-step arm
+    BACKLIGHT_TurnOn();
+    return true;
+}
+
 static void FOXHUNT_HandleKeys(void)
 {
     kbd.prev    = kbd.current;
     kbd.current = KEYBOARD_GetKey();
+
+    // Long-press F toggles the keypad lock; a short F press falls through to the reverse-
+    // step arm on its rising edge below. One hunt tick has elapsed since the last call.
+    FOXHUNT_LockHoldTrack(kbd.current, FOXHUNT_TICK_MS);
 
     // Act only on the rising edge of a new key.
     if (kbd.current == KEY_INVALID || kbd.current == kbd.prev)
         return;
 
     BACKLIGHT_TurnOn();   // any keypress wakes the screen and re-arms the timers
+
+    // While locked, swallow everything except the attenuation arrows — the lock is
+    // released only by the long-press F handled above. Keeping ATT reachable is the whole
+    // point: on the final approach the sensitivity still has to be pulled down by hand.
+    if (foxLocked) {
+        if (kbd.current == KEY_UP)   FOXHUNT_AttCycle(+1);   // more attenuation
+        if (kbd.current == KEY_DOWN) FOXHUNT_AttCycle(-1);   // less attenuation
+        return;
+    }
 
     if (kbd.current == KEY_F) {   // arm / disarm a reverse step for the next number key
         gWasFKeyPressed = !gWasFKeyPressed;
@@ -727,6 +779,14 @@ static void FOXHUNT_HandleKeys(void)
         case KEY_3:
             // Cycle the front-end ladder (ATT 0/-6/-15/-27 dB, then BYP/BYP+; F reverses).
             FOXHUNT_AttCycle(dir);
+            break;
+        case KEY_UP:
+            // Attenuation up one step (also the locked-mode control).
+            FOXHUNT_AttCycle(+1);
+            break;
+        case KEY_DOWN:
+            // Attenuation down one step.
+            FOXHUNT_AttCycle(-1);
             break;
         case KEY_MENU:
             // Reset the peak / min hold and the trend reference (before each body scan).
@@ -857,10 +917,27 @@ static bool FOXHUNT_TxDelay(uint16_t ms)
 
         kbd.prev    = kbd.current;
         kbd.current = KEYBOARD_GetKey();
+
+        // Track a held F across slices (fed the real slice time, so the ~0.5 s threshold
+        // matches hunt/idle). This runs before the rising-edge test below — a held key
+        // reads the same every slice and would otherwise be skipped — so the pad can be
+        // locked or unlocked mid-burst. On a toggle, repaint at once so the padlock
+        // appears without waiting for the next ID repaint.
+        if (FOXHUNT_LockHoldTrack(kbd.current, slice)) {
+            FOXHUNT_BeaconDraw(true, 0);
+            FOXHUNT_BlitScreen();
+        }
+
         if (kbd.current == KEY_INVALID || kbd.current == kbd.prev)
             continue;                       // rising edge only
 
         BACKLIGHT_TurnOn();                 // keep the screen awake during TX
+
+        // Locked: ignore every key for the rest of the burst; the long-press F unlock is
+        // handled above, before this gate, so the reverse-arm F and the setting keys stay
+        // inert until the pad is unlocked.
+        if (foxLocked)
+            continue;
 
         if (kbd.current == KEY_EXIT) {
             foxRunning = false;             // abort the burst and leave Fox Hunt
@@ -1123,10 +1200,20 @@ static void FOXHUNT_BeaconKeys(void)
     kbd.prev    = kbd.current;
     kbd.current = KEYBOARD_GetKey();
 
+    // Long-press F toggles the keypad lock (same gesture as the hunt screen). One idle
+    // tick has elapsed since the last call.
+    FOXHUNT_LockHoldTrack(kbd.current, FOXHUNT_TICK_MS);
+
     if (kbd.current == KEY_INVALID || kbd.current == kbd.prev)
         return;
 
     BACKLIGHT_TurnOn();   // any keypress wakes the screen and re-arms the timers
+
+    // Locked: swallow every key (the beacon has no per-key control to keep live, unlike
+    // the hunt's attenuation arrows); release with the long-press F handled above. A burst
+    // in progress enforces the same lock in FOXHUNT_TxDelay.
+    if (foxLocked)
+        return;
 
     if (kbd.current == KEY_F) {   // arm / disarm a reverse step for the next number key
         gWasFKeyPressed = !gWasFKeyPressed;
@@ -1335,6 +1422,12 @@ void APP_RunFoxHunt(void)
     // a fresh press and does not immediately toggle to the beacon.
     kbd.prev = kbd.current = KEYBOARD_GetKey();
     gWasFKeyPressed = false;   // start with the reverse-step arm cleared
+
+    // Always enter unlocked: the keypad lock is a transient safety toggle, not a
+    // persisted setting, so a previous session must not leave the pad locked.
+    foxLocked = false;
+    fHoldMs   = 0;
+    fLongDone = false;
 
     foxRunning = true;
     while (foxRunning) {

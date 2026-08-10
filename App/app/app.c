@@ -1245,9 +1245,11 @@ void APP_Update(void)
 #endif
 
 #ifdef ENABLE_VOICE
-    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed && gVoiceWriteIndex == 0)
+    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed && gVoiceWriteIndex == 0
+        && !UI_MAIN_ShouldHoldScanResume())
 #else
-    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed)
+    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed
+        && !UI_MAIN_ShouldHoldScanResume())
 #endif
     {   // scanning
         CHFRSCANNER_ContinueScanning();
@@ -2605,7 +2607,10 @@ Skip:
         gFlagRefreshSetting = false;
         gMenuCountdown      = menu_timeout_500ms;
 
-        MENU_ShowCurrentSetting();
+#ifdef ENABLE_FEAT_F4HWN_MENU_CAT
+        if (gMenuLevel != MENU_LEVEL_CAT)
+#endif
+            MENU_ShowCurrentSetting();
     }
 
     if (gFlagPrepareTX) {

@@ -48,6 +48,9 @@
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     #include "app/rxtx_log.h"
 #endif
+#ifdef ENABLE_SUPERF
+    #include "app/superf.h"
+#endif
 #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
     #include "app/foxhunt.h"
 #endif
@@ -407,6 +410,8 @@ void ACTION_Handle(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     }
 #endif
 
+    if(gSuperFActive)
+        func = ACTION_OPT_NONE;
     action_opt_table[func]();
 }
 

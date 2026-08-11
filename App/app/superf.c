@@ -30,14 +30,7 @@
 #include <string.h>
 
 bool gSuperFActive = 0;
-uint8_t gCurrentSuperFIndex = 0;
-
-static void SuperF_KeyMenu(void)
-{
-    GUI_SelectNextDisplay(DISPLAY_MAIN);
-    gSuperFActive = false;
-    action_opt_table[gSubMenu_SIDEFUNCTIONS[gCurrentSuperFIndex].id]();
-}
+uint8_t gCurrentSuperFIndex = 1;
 
 static void SuperF_KeyExit(void)
 {
@@ -45,38 +38,41 @@ static void SuperF_KeyExit(void)
     gSuperFActive = false;
 }
 
+static void SuperF_KeyMenu(void)
+{
+    SuperF_KeyExit();
+    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+    action_opt_table[gSubMenu_SIDEFUNCTIONS[gCurrentSuperFIndex].id]();
+}
+
 void ACTION_SuperF(void)
 {
-    gSuperFActive = true;
+    gSuperFActive = true; // useless?
     GUI_SelectNextDisplay(DISPLAY_SUPERF);
 }
 
 void SuperF_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    if (!bKeyPressed)
+    if (!bKeyPressed && Key != KEY_MENU)
         return;
 
-    if (Key != KEY_PTT)
+    if (Key != KEY_MENU)
         gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
 
     switch (Key) {
     case KEY_UP:
-        gCurrentSuperFIndex = (gCurrentSuperFIndex >= gSubMenu_SIDEFUNCTIONS_size - 1)? 0 : gCurrentSuperFIndex + 1;
+        gCurrentSuperFIndex = (gCurrentSuperFIndex >= gSubMenu_SIDEFUNCTIONS_size - 1)? 1 : gCurrentSuperFIndex + 1;
         break;
     case KEY_DOWN:
-        gCurrentSuperFIndex = (gCurrentSuperFIndex == 0)? gSubMenu_SIDEFUNCTIONS_size - 1 : gCurrentSuperFIndex - 1;
+        gCurrentSuperFIndex = (gCurrentSuperFIndex <= 1)? gSubMenu_SIDEFUNCTIONS_size - 1 : gCurrentSuperFIndex - 1;
         break;
     case KEY_MENU:
-        if (bKeyHeld)
-        {
+        if (!bKeyPressed)
             SuperF_KeyMenu();
-        }
         break;
     case KEY_EXIT:
         SuperF_KeyExit();
         return;
-    case KEY_PTT:
-        break;
     default:
         gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
         break;
@@ -88,13 +84,13 @@ void SuperF_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 void UI_DisplaySuperF(void)
 {
     UI_DisplayClear();
-    char* message = "Bonjour de SuperF!";
+    char* message = "--Choose action--";
     char index[16];
     sprintf(index, "%u", gCurrentSuperFIndex);
-    UI_PrintStringSmallNormal(message, 0, 127, 2);
-    UI_PrintStringSmallNormal(index, 0, 127, 3);
-    UI_PrintStringSmallNormal(gSubMenu_SIDEFUNCTIONS[gCurrentSuperFIndex].name, 0, 127, 4);
-
+    UI_PrintStringSmallNormal(message, 0, 127, 0);
+    UI_PrintStringSmallNormal(gSubMenu_SIDEFUNCTIONS[(gCurrentSuperFIndex >= gSubMenu_SIDEFUNCTIONS_size - 1)? 1 : gCurrentSuperFIndex + 1].name, 0, 127, 2);
+    UI_PrintString(gSubMenu_SIDEFUNCTIONS[gCurrentSuperFIndex].name, 0, 127, 3, 8);
+    UI_PrintStringSmallNormal(gSubMenu_SIDEFUNCTIONS[(gCurrentSuperFIndex <= 1)? gSubMenu_SIDEFUNCTIONS_size - 1 : gCurrentSuperFIndex - 1].name, 0, 127, 5);
     ST7565_BlitFullScreen();
 }
 

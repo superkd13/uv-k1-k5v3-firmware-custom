@@ -409,9 +409,10 @@ void ACTION_Handle(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         }
     }
 #endif
-
+#ifdef ENABLE_SUPERF
     if(gSuperFActive)
         func = ACTION_OPT_NONE;
+#endif
     action_opt_table[func]();
 }
 

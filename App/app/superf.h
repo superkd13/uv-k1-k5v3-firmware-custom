@@ -16,7 +16,7 @@
 
 #ifndef APP_SUPERF_H
 #define APP_SUPERF_H
-//#define ENABLE_SUPERF
+
 #ifdef ENABLE_SUPERF
 
 #include <stdbool.h>

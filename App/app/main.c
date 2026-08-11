@@ -455,6 +455,16 @@ static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                     gRequestDisplayScreen = DISPLAY_MAIN;
                 }
 
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+                if (gWasFKeyPressed && (Key == KEY_SIDE1 || Key == KEY_SIDE2)) {
+                    gActionPickerKey = (Key == KEY_SIDE1) ? 1 : 2;
+                    gActionPickerTimeout_500ms = ACTION_PICKER_TIMEOUT_500MS;
+                    gUpdateDisplay = true;
+                    HideFKeyIcon();
+                    return;
+                }
+#endif
+
                 HideFKeyIcon();
 
                 processFKeyFunction(Key, true);

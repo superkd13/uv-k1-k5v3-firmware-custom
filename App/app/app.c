@@ -1266,9 +1266,11 @@ void APP_Update(void)
 #endif
 
 #ifdef ENABLE_VOICE
-    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed && gVoiceWriteIndex == 0)
+    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed && gVoiceWriteIndex == 0
+        && !UI_MAIN_ShouldHoldScanResume())
 #else
-    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed)
+    if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed
+        && !UI_MAIN_ShouldHoldScanResume())
 #endif
     {   // scanning
         CHFRSCANNER_ContinueScanning();
@@ -1630,6 +1632,13 @@ void APP_TimeSlice10ms(void)
 
     if (gCurrentFunction != FUNCTION_POWER_SAVE || !gRxIdleMode)
         CheckRadioInterrupts();
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+    if (gActionPickerKey != 0 && FUNCTION_IsRx()) {
+        gActionPickerKey = 0;
+        gUpdateDisplay = true;
+    }
+#endif
+
 
     if (gCurrentFunction == FUNCTION_TRANSMIT)
     {   // transmitting
@@ -1829,6 +1838,15 @@ void cancelUserInputModes(void)
 void APP_TimeSlice500ms(void)
 {
     gNextTimeslice_500ms = false;
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+    if (gActionPickerKey != 0 && gActionPickerTimeout_500ms > 0 &&
+        --gActionPickerTimeout_500ms == 0)
+    {
+        gActionPickerKey = 0;
+        gUpdateDisplay = true;
+    }
+#endif
+
     bool exit_menu = false;
 
     // Skipped authentic device check
@@ -2048,6 +2066,10 @@ void APP_TimeSlice500ms(void)
         {
             gEeprom.KEY_LOCK = true;     // lock the keyboard
             gUpdateStatus = true;            // lock symbol needs showing
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+            gActionPickerKey = 0;
+            gUpdateDisplay = true;
+#endif
         }
 
         if (exit_menu) {
@@ -2288,7 +2310,11 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             BACKLIGHT_TurnOn();
         }
 
-        if (Key == KEY_EXIT && bKeyHeld) { // exit key held pressed
+        if (Key == KEY_EXIT && bKeyHeld
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+            && gActionPickerKey == 0
+#endif
+        ) { // exit key held pressed
             // clear the live DTMF decoder
             if (gDTMF_RX_live[0] != 0) {
                 DTMF_clear_input_box_memory();
@@ -2325,6 +2351,14 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     }
 
     bool lowBatPopup = gLowBattery && !gLowBatteryConfirmed &&  gScreenToDisplay == DISPLAY_MAIN;
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+    if (gActionPickerKey != 0 &&
+        (gEeprom.KEY_LOCK || lowBatPopup || gScreenToDisplay != DISPLAY_MAIN))
+        gActionPickerKey = 0;
+    if (ACTION_PickerProcessKey(Key, bKeyPressed, bKeyHeld))
+        goto Skip;
+#endif
+
 
 #ifdef ENABLE_FEAT_F4HWN // Disable PTT if KEY_LOCK
     bool lck_condition = (gEeprom.KEY_LOCK || lowBatPopup) && gCurrentFunction != FUNCTION_TRANSMIT;

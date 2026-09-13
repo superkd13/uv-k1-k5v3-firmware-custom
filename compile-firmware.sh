@@ -29,7 +29,7 @@ EXTRA_ARGS=("$@")
 # ---------------------------------------------
 # Validate preset name
 # ---------------------------------------------
-if [[ ! "$PRESET" =~ ^(Custom|Fusion|Transfer|FieldOps|Labs|Max|All)$ ]]; then
+if [[ ! "$PRESET" =~ ^(Custom|Fusion|Transfer|FieldOps|Labs|Labs-MSG|Max|All)$ ]]; then
   echo "❌ Unknown preset: '$PRESET'"
   echo "Valid presets are: Custom, Fusion, Transfer, FieldOps, Labs, Max, All"
   exit 1

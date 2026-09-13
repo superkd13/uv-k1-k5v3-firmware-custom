@@ -185,9 +185,17 @@
                 "ENABLE_FEAT_F4HWN_OVERLAY_APPS": true,
                 "ENABLE_FEAT_F4HWN_OVERLAY_TRIVFO": false,
                 "ENABLE_FEAT_F4HWN_OVERLAY_BEAM": true,
-                "ENABLE_FEAT_KD_MSG": true,
                 "EDITION_STRING": "Labs",
                 "TARGET": "f4hwn.labs"
+            }
+        },
+        {
+            "name": "Labs-MSG",
+            "inherits": "Labs",
+            "cacheVariables": {
+                "ENABLE_FEAT_KD_MSG": true,
+                "EDITION_STRING": "Labs-MSG",
+                "TARGET": "f4hwn.labs_msg"
             }
         },
         {
@@ -226,6 +234,10 @@
         {
             "name": "Labs",
             "configurePreset": "Labs"
+        },
+        {
+            "name": "Labs-MSG",
+            "configurePreset": "Labs-MSG"
         },
         {
             "name": "Max",

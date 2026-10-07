@@ -16,8 +16,8 @@
 
 /*
  * APRS RX - receives APRS (AX.25 UI frames, Bell 202 AFSK 1200 bauds) in
- * software and shows the last frame: source, destination and path, the info
- * field. Tune the VFO (FM; 144.800 MHz, or 433.650 MHz for the Flipper Zero
+ * software and keeps the last five frames, shown one at a time: source,
+ * destination and path, the info field. Tune the VFO (FM; 144.800 MHz, or 433.650 MHz for the Flipper Zero
  * bench files of test/flipper_aprs.py), then launch.
  *
  * The BK4829 has no Bell 202 demodulator (see README.md), so the RX audio is
@@ -34,8 +34,9 @@
  * plausible frame; the redraw follows a new frame, a key, or every 5 s.
  *
  * Keys (UV-K5 and UV-K1): UP/DOWN (held) scroll the frame 1 px per slot when
- *   needed · * scroll view / compact view (saved) · 1 speaker on/off (saved, off by
- *   default: the decoder does not need it) · 2 clear · EXIT quit.
+ *   needed; pressed again at either end: the newer / older frame · * normal
+ *   view / compact view (saved) · 1 speaker on/off (saved, off by default: the
+ *   decoder does not need it) · 2 clear · EXIT quit.
  * The loader re-runs RADIO_SetupRegisters on exit; the app restores the ADC,
  * PA4, the DAC and its clock itself.
  */
@@ -104,6 +105,13 @@ static inline volatile uint32_t *hw(uint32_t a){
 #define FRAME_MAX   330u   /* 10 addresses + control + PID + 256 info + FCS */
 #define FRAME_MIN   18u    /* 2 addresses + control + PID + FCS              */
 #define FCS_GOOD    0xF0B8u
+#define HISTORY     5u
+
+typedef struct {
+    uint16_t len;
+    int16_t rssi;
+    uint8_t buf[FRAME_MAX];
+} frame_t;
 
 /* the front end shared by the slicers */
 typedef struct {
@@ -124,6 +132,12 @@ _Static_assert(COS2200==COS1200+COS1200_LEN &&
                sizeof(((dem_t *)0)->cs)==COS2200_LEN &&
                offsetof(dem_t,cs)==offsetof(dem_t,cm)+COS1200_LEN,
                "cos tables must stay contiguous");
+_Static_assert(BIAS_CODE==2048u && offsetof(dem_t,pm)==36u &&
+               offsetof(dem_t,ps)==40u &&
+               offsetof(dem_t,cm)==DEMOD_INIT_LEN &&
+               COS1200==DEMOD_INIT+DEMOD_INIT_LEN &&
+               sizeof(dem_t)==DEMOD_INIT_LEN+COS1200_LEN+COS2200_LEN,
+               "demodulator initialization asset must match dem_t");
 
 /* one slicer: decision weights, DPLL, NRZI, HDLC */
 typedef struct {
@@ -140,33 +154,35 @@ typedef struct {
 /* The app state in one struct: a function loads one base address instead of one
  * literal-pool word per global. Bytes, then halfwords, then words, so every field
  * stays within the Thumb load/store immediate ranges (ldrb <= 31, ldrh <= 62,
- * ldr <= 124); the registers saved for the exit, used twice, go last.
+ * ldr <= 124); the ADC registers shared with housekeeping go last.
  * The loader zeroes the overlay (.bss) at every launch. */
 static struct {
     uint8_t  prevKey, redraw;
     bool     running;
-    uint8_t  top, lim, vrow;             /* scroll, limit / temporary coarse row, virtual row */
-    uint8_t  symTable, symCode;         /* symbol extracted from the displayed frame */
+    uint8_t  count, cur;               /* history count, frame shown (0 = newest) */
+    uint8_t  symTable, symCode;        /* symbol of the frame shown; table zero never
+                                          matches an asset */
     uint8_t  cw, spk;                  /* the saved settings, in cfg order: view (0 scroll,
                                             CW_COMPACT compact), speaker amplifier on (key 1) */
     uint8_t  refresh;                  /* housekeeping slots since the last redraw */
-    int16_t  rssi;                     /* RSSI at the end of the last frame       */
-    uint16_t flen, nOk;                /* frame length, frames                    */
+    uint16_t vrow;                     /* y of the next body row before scrolling */
+    uint16_t top, lim, nOk;            /* pixel scroll of the body, its limit, frames */
     const app_api_t *A;
     char *text;                        /* formatting buffer (app_main's stack)    */
-    uint8_t *frm;                      /* last good frame (app_main's stack)      */
+    frame_t **history;                 /* newest first; buffers live on app_main's stack */
     uint32_t tPrev, tCyc;              /* SysTick cycle counter                   */
     uint32_t tFrame;                   /* ticks_ms of the last frame              */
-    uint32_t savedSqr3, savedSmpr3, savedModer, savedDac, savedRcc, savedDhr;
+    uint32_t savedSqr3, savedSmpr3;
 } g;
 #define str g.text
 
 /* ---- tiny freestanding helpers: GCC may turn the zeroing / copy loops into calls ---- */
 void *memset(void *d, int c, size_t n) {
-    uint8_t *p = d; while (n--) *p++ = (uint8_t)c; return d;
+    uint8_t *p = d; while (n) p[--n] = (uint8_t)c; return d;
 }
 void *memcpy(void *d, const void *s, size_t n) {
-    uint8_t *p = d; const uint8_t *q = s; while (n--) *p++ = *q++; return d;
+    uint8_t *p = d; const uint8_t *q = s;
+    while (n) { --n; p[n] = q[n]; } return d;
 }
 
 /* ---- formatting ---- */
@@ -174,14 +190,14 @@ void *memcpy(void *d, const void *s, size_t n) {
 __attribute__((noinline))
 static char *put(char *o,const char *s){ while(*s)*o++=*s++; return o; }
 /* Formatting by repeated subtraction: no division. Values printed stay below 100000. */
-static uint8_t sub(uint32_t *v,uint32_t d){ uint8_t q=0; while(*v>=d){ *v-=d; q++; } return q; }
+static unsigned sub(uint32_t *v,uint32_t d){ unsigned q=0; while(*v>=d){ *v-=d; q++; } return q; }
 static const uint16_t P10[]={10000u,1000u,100u,10u,1u};
 static char *puti(char *o,int32_t v){
     uint32_t u;
     if(v<0){*o++='-';u=(uint32_t)(-v);} else u=(uint32_t)v;
     bool lead=false;
     for(unsigned i=0;i<5u;i++){
-        uint8_t c=sub(&u,P10[i]);
+        unsigned c=sub(&u,P10[i]);
         if(c||lead||i==4u){ *o++=(char)('0'+c); lead=true; }
     }
     return o;
@@ -196,14 +212,13 @@ static void tiny(uint8_t y,char *end){ *end='\0'; g.A->print_tiny(str,0,y,false,
                               TX, before the battery text (x >= 83): BMP_TAIL in the
                               assets, both in one read */
 
-/* The frame is shown above the separator (y = 31), in one of two views (key *):
- * - scroll (g.cw = 0): rows of 18 characters in the small font (7 px each),
- *   8 px apart (glyphs 7 px, bit 7 blank), scrolled by g.top pixels: 4 rows
- *   show at g.top = 0;
- * - compact (g.cw = CW_COMPACT): the source in the small font, then rows of 32
- *   tiny characters (4 px each), 6 px apart from y = 8 (the 3x5 glyphs: one
- *   blank px between rows); overflow enables the same 1-pixel scroll. */
+/* One frame at a time: its source in bold on line 0, its body scrolled under
+ * it, y = 8 to 30, in one of two views (key *):
+ * - normal (g.cw = 0): 18 characters per row, 8 px apart, 3 rows at rest;
+ * - compact (g.cw = CW_COMPACT): 32 tiny characters per row, 6 px apart, 4 rows. */
 #define ROW_CHARS   18u
+#define CAPS_END    127u   /* last column of the capsules at the right of the
+                              source (x >= 89 with "65535" and "2/5") */
 #define CW_COMPACT  14u    /* compact rows: ROW_CHARS + 14 = 32 characters */
 
 /* The frequency (10 Hz units) drawn as the main screen draws it (ui/main.c,
@@ -212,27 +227,36 @@ static void tiny(uint8_t y,char *end){ *end='\0'; g.A->print_tiny(str,0,y,false,
  * left to reserve the rightmost 20 columns for the APRS symbol. Big digits are
  * 13 px (drawn from +2), the point 3 px. No division. As APRS TX, without its
  * 1 GHz case (the main screen's small font there): 1296.000 still fits. */
+__attribute__((noinline))
 static void drawFreq(uint32_t f){
     const app_api_t *A=g.A;
-    uint16_t m=0;
+    unsigned m=0;
     while(f>=100000u){ f-=100000u; m++; }
     char *o=puti(str,m);
     *o++='.';
-    for(uint8_t i=0;i<5u;i++) *o++=(char)('0'+sub(&f,P10[i]));
+    for(unsigned i=0;i<5u;i++) *o++=(char)('0'+sub(&f,P10[i]));
     *o='\0';
-    uint8_t n=(uint8_t)(o-str), big=(uint8_t)(n-3u);    /* digits before "00" */
-    A->print_normal(str+n-2u,(uint8_t)(big*13u+3u),0,5);     /* "00"      */
-    str[n-2u]='\0';
+    o-=2;                                                   /* last two digits */
+    A->print_normal(o,(uint8_t)((o-str)*13u-10u),0,5);
+    *o='\0';
     A->display_freq(str,0,4,false);                          /* "144.800" */
 }
 
 #define SYM_X 108u
+/* The exact (table, code) pair first: E0 and YY have their own bitmap. An
+ * overlay (table 0-9 or A-Z) without one then shows the alternate-table symbol
+ * it is drawn over; the overlay character itself is in the body text. */
 static void drawSymbol(void){
     const app_api_t *A=g.A;
     uint8_t hit[3];
-    uint8_t slot=(uint8_t)((2u*g.symTable+13u*g.symCode)&127u);
-    A->asset_read((uint16_t)(SYM_MAP+slot*3u),hit,sizeof hit);
-    if(!hit[0] || hit[1]!=g.symTable || hit[2]!=g.symCode) return;
+    uint8_t t=g.symTable;
+    for(;;){
+        uint8_t slot=(uint8_t)((t+59u*g.symCode)&127u);
+        A->asset_read((uint16_t)(SYM_MAP+slot*3u),hit,sizeof hit);
+        if(hit[0] && hit[1]==t && hit[2]==g.symCode) break;
+        if(t<'0' || t=='\\') return;          /* none, '/', or '\\' already tried */
+        t='\\';
+    }
     uint16_t off=(uint16_t)(SYM_BITMAPS+(uint16_t)(hit[0]-1u)*SYM_BYTES);
     for(uint8_t page=0;page<3u;page++)
         A->asset_read((uint16_t)(off+page*SYM_W),A->fb[4u+page]+SYM_X,SYM_W);
@@ -251,14 +275,16 @@ static uint32_t clkCyc(void){
 /* ---- PA4 bias: the pin has no DC reference of its own (AC-coupled audio); the
  * MCU DAC on PA4, output buffer off, at mid-scale, holds it at ~VDD/2.
  * Set for the whole run, restored on exit (see EPIRB 406). ---- */
-static void biasOn(void){
-    GPIOA_MODER=g.savedModer|(3u<<8);           /* PA4 analog                     */
-    RCC_APBENR1=g.savedRcc|RCC_DACEN;
+static void biasOn(uint32_t moder,uint32_t rcc){
+    GPIOA_MODER=moder|(3u<<8);                 /* PA4 analog                     */
+    RCC_APBENR1=rcc|RCC_DACEN;
     DAC_CR=DAC_CR_BIAS;
     DAC_DHR12R1=BIAS_CODE;
     DAC_SWTRIGR=1u;                           /* DHR -> DOR                     */
 }
-static void biasOff(void){ DAC_CR=g.savedDac; DAC_DHR12R1=g.savedDhr; RCC_APBENR1=g.savedRcc; GPIOA_MODER=g.savedModer; }
+static void biasOff(uint32_t dac,uint32_t dhr,uint32_t rcc,uint32_t moder){
+    DAC_CR=dac; DAC_DHR12R1=dhr; RCC_APBENR1=rcc; GPIOA_MODER=moder;
+}
 
 /* ---- ADC on PA4 (channel 4); channel 8 (battery) restored afterwards ---- */
 static void adcSelPA4(void){
@@ -288,12 +314,18 @@ static void accept(const sl_t *m){
     const app_api_t *A=g.A;
     uint16_t n=m->n;
     uint32_t t=A->ticks_ms();
-    if(!(n==g.flen && g.frm[n-1]==m->buf[n-1] && g.frm[n-2]==m->buf[n-2]
+    frame_t *f=g.history[0];
+    if(!(g.count && n==f->len && f->buf[n-1]==m->buf[n-1] && f->buf[n-2]==m->buf[n-2]
          && t-g.tFrame<DUP_MS)){
-        memcpy(g.frm,m->buf,n);
-        g.flen=n;
-        g.nOk++;                           /* wraps after 65535: still one tiny row */
-        g.rssi=A->rssi_dbm();              /* the carrier is still up: closing flags */
+        f=g.history[HISTORY-1u];
+        for(unsigned k=HISTORY-1u;k;k--) g.history[k]=g.history[k-1u];
+        g.history[0]=f;
+        memcpy(f->buf,m->buf,n);
+        f->len=n;
+        f->rssi=A->rssi_dbm();              /* capture while the carrier is still up */
+        if(g.count<HISTORY) g.count++;
+        g.nOk++;                           /* wraps after 65535: five digits in its capsule */
+        g.cur=0;                           /* show it, from its first row */
         g.top=0;
         g.redraw|=REDRAW_FRAME;
     }
@@ -415,9 +447,12 @@ static char *putCall(char *o,const uint8_t *a){
 __attribute__((noinline))
 static char safe(uint8_t ch){ return (ch<0x20u||ch>0x7Eu)?'.':(char)ch; }
 
-/* One row str..end of the frame, wrapped every ROW_CHARS + g.cw. Row 0 uses
- * the small bold font. In compact view it stays fixed; the following 3x5 rows
- * use a five-row staging window below it, shifted by draw() one pixel at a time. */
+/* Body rows str..end, wrapped every ROW_CHARS + g.cw. A visible row is rendered
+ * on scratch page 4, then its columns are ORed into lines 0-3 at its exact pixel
+ * offset: 8-pixel and 6-pixel rows scroll alike, without another framebuffer.
+ * Rows may spill over line 0 and the separator: draw() redraws both afterwards.
+ * The scratch page is left blank: display_clear() blanks it before the first
+ * row and each row clears it after use. */
 static char *emit(char *end){
     const app_api_t *A=g.A;
     char *p=str;
@@ -425,16 +460,22 @@ static char *emit(char *end){
         unsigned w=ROW_CHARS+g.cw;   /* 18 or 32; compare lengths before forming p + w */
         char *q=((unsigned)(end-p)>w)?p+w:end;
         char c=*q; *q='\0';
-        uint8_t r=g.vrow;
-        if(g.cw && r){
-            uint8_t row=(uint8_t)(r-g.lim);
-            if(row && row<6u) A->print_tiny(p,0,(uint8_t)(2u+6u*row),false,true);
-        } else {
-            uint8_t ln=(uint8_t)(r-(g.cw?0u:g.lim));
-            if(ln<5u) (r?A->print_normal:A->print_bold)(p,0,0,ln);
+        unsigned y=(unsigned)g.vrow-g.top;   /* wraps to a huge value above the screen */
+        if(y-1u<30u){                /* y = 1..30: higher rows lie under the source */
+            uint8_t *scratch=A->fb[4];
+            if(g.cw) A->print_tiny(p,0,32,false,true);
+            else A->print_normal(p,0,0,4);
+            for(unsigned x=0;x<128u;x++){
+                uint32_t bits=(uint32_t)scratch[x]<<y;
+                for(uint8_t *out=A->fb[0]+x;bits;out+=128){
+                    *out|=(uint8_t)bits;
+                    bits>>=8;
+                }
+            }
+            memset(scratch,0,128);
         }
         *q=c;
-        g.vrow=(uint8_t)(r+1u);
+        g.vrow+=g.cw?6u:8u;
         p=q;
     }
     return str;                         /* the next row starts there */
@@ -449,7 +490,7 @@ static char *brk(char *o){
 
 /* Info bytes f[i..end) after the text already at str..o, on as many rows as
  * they take. */
-static void textRows(char *o,const uint8_t *f,uint16_t i,uint16_t end){
+static void textRows(char *o,const uint8_t *f,unsigned i,unsigned end){
     const uint8_t *p=f+i, *last=f+end;
     do{
         for(; o<str+ROW_CHARS+g.cw && p<last; p++) *o++=safe(*p);
@@ -463,39 +504,32 @@ static void textRows(char *o,const uint8_t *f,uint16_t i,uint16_t end){
  * field. Byte arithmetic wraps as uint8, so a bad field prints junk, never loops. */
 static char *put2(char *o,uint32_t v){ *o++=(char)('0'+sub(&v,10u)); *o++=(char)('0'+v); return o; }
 static char *put3(char *o,uint32_t v){ *o++=(char)('0'+sub(&v,100u)); return put2(o,v); }
-static uint8_t micDigit(uint8_t c){
-    /* Fold P-Y onto A-J, then A-J onto 0-9; reject all other values. */
-    unsigned v=c;
-    if(v>='P') v-='P'-'A';
-    if(v>='A') v-='A'-'0';
-    v-='0';
-    return v<10u?(uint8_t)v:0;                 /* K, L, Z: position ambiguity */
-}
-static bool micBit(uint8_t c){ return c>='P' || (c>='A'&&c<='K'); }
 static bool micType(uint8_t t){ return t=='`'||t=='\''||t==0x1Cu||t==0x1Du; }
 
-static void drawMicE(const uint8_t *f,uint16_t i,uint16_t end,const char *s){
-    const app_api_t *A=g.A;
+/* Keep decoder temporaries out of the history renderer's register allocation. */
+__attribute__((noinline))
+static void drawMicE(const uint8_t *f,unsigned i,unsigned end,const char *s){
     uint8_t c[6];
-    for(uint8_t k=0;k<6u;k++) c[k]=(uint8_t)(f[k]>>1);
+    /* The asset lookup packs digit, position/message bit and custom flag. */
+    for(unsigned k=0;k<6u;k++) c[k]=(uint8_t)s[T_MIC+(f[k]>>1)];
 
     /* "48 50.89N" / "002 16.25E" (brk) */
     char *o=str;
     for(uint8_t k=0;k<6u;k++){
-        *o++=(char)('0'+micDigit(c[k]));
+        *o++=(char)('0'+(c[k]&15u));
         if(k==1u) *o++=' ';
         if(k==3u) *o++='.';
     }
-    *o++=micBit(c[3])?'N':'S';
+    *o++=(c[3]&16u)?'N':'S';
     o=brk(o);
     uint32_t deg=(uint8_t)(f[i+1]-28u);
-    if(micBit(c[4])) deg+=100u;
+    if(c[4]&16u) deg+=100u;
     if(deg>=180u && deg<=189u) deg-=80u;
     else if(deg>=190u && deg<=199u) deg-=190u;
     uint32_t mn=(uint8_t)(f[i+2]-28u);
     if(mn>=60u) mn-=60u;
     o=put3(o,deg); *o++=' '; o=put2(o,mn); *o++='.'; o=put2(o,(uint8_t)(f[i+3]-28u));
-    *o++=micBit(c[5])?'W':'E';
+    *o++=(c[5]&16u)?'W':'E';
     emit(o);
 
     /* "12km/h 245 [/" / "En Route" (brk): speed in knots x 1.8525 (1897/1024) */
@@ -509,11 +543,14 @@ static void drawMicE(const uint8_t *f,uint16_t i,uint16_t end,const char *s){
     *o++=safe(f[i+7]); *o++=safe(f[i+8]);
     g.symTable=f[i+8]; g.symCode=f[i+7];
     o=brk(o);
-    uint8_t idx=(uint8_t)(micBit(c[0])*4u+micBit(c[1])*2u+micBit(c[2]));
-    bool custom=false;
-    for(uint8_t k=0;k<3u;k++) if(c[k]>='A'&&c[k]<='K') custom=true;
+    unsigned idx=0;
+    unsigned custom=0;
+    for(unsigned k=0;k<3u;k++){
+        idx=(idx<<1)|((c[k]>>4)&1u);
+        custom|=c[k]&32u;
+    }
     if(custom && idx){ o=put(o,s+T_CUSTOM); *o++=(char)('0'+7u-idx); }
-    else o+=A->asset_read((uint16_t)(T_MSG+idx*T_MSG_STRIDE),o,T_MSG_STRIDE); /* NUL-padded */
+    else o=put(o,s+T_MSG+idx*T_MSG_STRIDE);
     emit(o);
 
     /* comment: trailing CR/LF, the device markers (Yaesu/other: '`' or '\'' +
@@ -540,7 +577,8 @@ static void drawMicE(const uint8_t *f,uint16_t i,uint16_t end,const char *s){
  * the timestamp, the symbol and the comment. False for anything else (compressed
  * positions included), which is then shown as raw text. The position takes
  * two rows in the scroll view, "49 21.07N" / "001 50.50E", one when compact. ---- */
-static bool drawPos(const uint8_t *f,uint16_t i,uint16_t end){
+__attribute__((noinline))
+static bool drawPos(const uint8_t *f,unsigned i,unsigned end){
     uint8_t t=f[i];
     unsigned p=i+1u;                         /* native-width offset; bounds checked below */
     if(t=='/'||t=='@') p+=7u;
@@ -561,7 +599,7 @@ static bool drawPos(const uint8_t *f,uint16_t i,uint16_t end){
     }
     *o++=safe(q[8]); *o++=safe(q[18]); *o++=' ';
     g.symTable=q[8]; g.symCode=q[18];
-    textRows(o,f,(uint16_t)(p+19u),end);
+    textRows(o,f,p+19u,end);
     return true;
 }
 
@@ -569,36 +607,32 @@ static bool drawPos(const uint8_t *f,uint16_t i,uint16_t end){
 __attribute__((noinline))
 static void draw(void){
     const app_api_t *A=g.A;
-    /* The UI texts live in the assets: one read per frame into this word-aligned
+    /* The UI texts and Mic-E lookup live in the assets: one read into this word-aligned
      * stack block, so each text costs a 2-byte sp-relative add instead of a
      * literal and its pool word (gen_assets.py keeps every offset aligned). */
     char s[UI_SIZE] __attribute__((aligned(4)));
     char *o;
+    frame_t *frame=g.history[g.cur];     /* read only when there is a frame */
+    uint8_t *b=A->fb[0];
     A->asset_read(0,s,UI_SIZE);
     A->display_clear();
     A->status_clear();
-    g.vrow=0;
-    g.lim=0;                              /* coarse row while emit() builds the screen */
-    uint8_t rem=g.top, step=g.cw?6u:8u;
-    while(rem>=step){ rem-=step; g.lim++; }
-    g.symTable=g.symCode=0;
+    g.vrow=8;                            /* the body starts under the source */
+    g.symTable=0;
     A->print_inverse(s+T_TITLE,2,0,true,true,(uint8_t)(2u+T_TITLE_CHARS*4u));
     A->draw_battery();
 
-    if(!g.flen)                          /* no frame yet: a capsule, as APRS TX's TRANSMIT */
+    if(!g.count)                         /* no frame yet: a capsule, as APRS TX's TRANSMIT */
         A->print_inverse(s+T_WAIT,WAIT_CAPS_X,0,true,true,(uint8_t)(WAIT_CAPS_X+T_WAIT_CHARS*4u));
     else {
-        const uint8_t *f=g.frm;
-        uint16_t end=(uint16_t)(g.flen-2u);    /* the FCS is not shown */
-
-        o=putCall(str,f+7);
-        emit(o);                             /* source */
+        const uint8_t *f=frame->buf;
+        unsigned end=frame->len-2u;            /* the FCS is not shown */
 
         /* ">DEST,DIGI*,..." while it fits 2 rows, then the rest of the
          * address field is skipped up to its end bit */
         o=str; *o++='>'; o=putCall(o,f);
-        uint16_t e=13;                         /* SSID byte of the current address */
-        while(!(f[e]&1u) && e+7u<end){
+        unsigned e=13;                        /* isUI() already checked the end marker and bounds */
+        while(!(f[e]&1u)){
             e+=7;
             if(o<=str+20){ *o++=','; o=putCall(o,f+e-6); if(f[e]&0x80u) *o++='*'; }
         }
@@ -606,42 +640,51 @@ static void draw(void){
 
         /* info field (after control and PID): Mic-E and uncompressed positions
          * decoded, anything else as text */
-        uint16_t i=(uint16_t)(e+3u);
+        unsigned i=e+3u;
         if(end>=i+9u && micType(f[i])) drawMicE(f,i,end,s);
-        else if(!drawPos(f,i,end)) textRows(str,f,i,end);
-    }
-    /* Shift the visible rows upward. Compact keeps its bold source on line 0
-     * and shifts only the 3x5 body; line 4 is the one staging page. */
-    uint8_t *b=A->fb[0];
-    uint16_t first=g.cw?128u:0u;
-    for(uint16_t k=first;k<512u;k++)
-        b[k]=(uint8_t)((b[k]>>rem)|(b[k+128u]<<(8u-rem)));
-    memset(b+512,0,128);
+        else if(i<end && !drawPos(f,i,end)) textRows(str,f,i,end);
 
-    /* The scroll limit keeps the final row fully above the separator. Compact
-     * mode fits the source plus four 6-pixel rows before it needs scrolling. */
-    uint8_t lim=0;
-    uint8_t shown=(uint8_t)(8u-(step>>1));
-    if(g.vrow>shown) lim=(uint8_t)((g.vrow-shown)*step);
+        /* the source, fixed on line 0 over the body rows scrolled there */
+        memset(b,0,128);
+        *putCall(str,f+7)='\0';
+        A->print_bold(str,0,0,0);
+        /* at the right of the source, two capsules: once several frames are
+         * kept, "2/5" at the edge (the frame shown / the frames kept, 1 =
+         * newest), and left of it the frames received. A capsule runs from 2 px before its text to its end column. */
+        unsigned capsEnd=CAPS_END;
+        if(g.count>1u){
+            o=str; *o++=(char)('1'+g.cur); *o++='/'; *o++=(char)('0'+g.count); *o='\0';
+            A->print_inverse(str,CAPS_END-12u,0,false,true,CAPS_END);
+            capsEnd-=16u;                 /* that capsule and a blank column */
+        }
+        o=puti(str,g.nOk); *o='\0';
+        A->print_inverse(str,(uint8_t)(capsEnd-4u*(unsigned)(o-str)),0,false,true,(uint8_t)capsEnd);
+    }
+    /* The last glyph ends one pixel before its row height: the scroll stops
+     * with it right above the separator. */
+    unsigned lim=g.vrow>32u?g.vrow-32u:0u;
     g.lim=lim;
     /* Status bar from SPK_X: the speaker icon while on, an up mark while rows
-     * hide above, a down mark while rows hide below, in either view. */
-    uint8_t t=g.spk;
-    if(g.top) t+=2u;
-    if(g.top<lim) t+=4u;
+     * or a newer frame hide above, a down mark while rows or an older frame hide
+     * below: UP / DOWN has something to show. */
+    unsigned t=g.spk;
+    if(g.top || g.cur) t+=2u;
+    if(g.top<lim || g.cur+1u<g.count) t+=4u;
     A->asset_read((uint16_t)(BMP_TAIL+t*TAIL_W),A->status_line+SPK_X,TAIL_W);
 
     /* dotted separator above the frequency: y = 31, bit 7 of line 3, over
      * whatever the shift brought there (the big digits start at y = 33: one
      * blank px between) */
-    for(uint8_t x=0;x<128u;x++) b[384u+x]=(uint8_t)((b[384u+x]&0x7Fu)|((~x&1u)<<7));
+    for(unsigned x=0;x<128u;x+=2u){
+        b[384u+x]|=0x80u;
+        b[385u+x]&=0x7Fu;
+    }
     drawFreq(A->rx_freq());
     drawSymbol();
 
-    /* bottom line: "ok 12  -89dBm": frames, RSSI of the last one (none
-     * captured yet: no dBm field rather than a bogus 0dBm) */
-    o=put(str,s+T_OK); o=puti(o,g.nOk);
-    if(g.flen){ *o++=' '; *o++=' '; o=puti(o,g.rssi); o=put(o,s+T_DBM); }
+    /* bottom line: "-89dBm", RSSI of the frame shown (none captured yet: blank) */
+    o=str;
+    if(g.count){ o=puti(o,frame->rssi); o=put(o,s+T_DBM); }
     tiny(49,o);
 }
 
@@ -649,14 +692,22 @@ static void draw(void){
 static void handleKeys(void){
     const app_api_t *A=g.A;
     uint8_t key=A->get_key();
-    /* UP/DOWN, held: scroll 1 px per slot (20 px/s), only while rows overflow. */
-    int8_t d=A->nav_dir(key);
-    if((d<0 && g.top) || (d>0 && g.top<g.lim)){ g.top=(uint8_t)(g.top+d); g.redraw|=REDRAW_ON; }
+    /* UP/DOWN, held: scroll the body 1 px per slot (20 px/s) while rows overflow.
+     * Pressed again once at an end: the newer (UP) or older (DOWN) frame, from its
+     * first row; holding the key never leaves the frame. */
+    int d=A->nav_dir(key);
+    unsigned top=(unsigned)(g.top+d);     /* wraps past the first row */
+    if(top<=g.lim){
+        if(top!=g.top){ g.top=(uint16_t)top; g.redraw|=REDRAW_ON; }
+    } else if(key!=g.prevKey && (unsigned)(g.cur+d)<g.count){
+        g.cur=(uint8_t)(g.cur+d);         /* the new key redraws below */
+        g.top=0;
+    }
     if(key==APP_KEY_INVALID||key==g.prevKey){ g.prevKey=key; return; }
     g.prevKey=key;
     g.redraw|=REDRAW_ON;
     if(key==APP_KEY_EXIT) g.running=false;
-    else if(key==APP_KEY_2){ g.flen=0; g.nOk=0; g.top=0; }   /* g.lim: 0 at the redraw that follows */
+    else if(key==APP_KEY_2){ g.count=g.cur=0; g.nOk=0; g.top=0; }   /* g.lim: 0 at the redraw that follows */
     else if(key==APP_KEY_1){ g.spk^=1u; A->audio_path(g.spk); }   /* speaker, as FoxHunt's audio */
     else if(key==APP_KEY_STAR){ g.cw^=CW_COMPACT; g.top=0; }   /* the view (saved on exit) */
 }
@@ -681,19 +732,18 @@ static void house(void){
 }
 
 /* ---- the receiver: PA4 at 9.6 kHz, continuously, until EXIT ---- */
+/* Keep decoder stack offsets independent of the five history buffers. */
+__attribute__((noinline))
 static void listen(void){
     const app_api_t *A=g.A;
     dem_t d;
     sl_t sl[NSL];
-    memset(&d,0,sizeof d);
     memset(sl,0,sizeof sl);
-    A->asset_read(COS1200,d.cm,COS1200_LEN+COS2200_LEN);   /* cm then cs */
-    d.dc=(int32_t)BIAS_CODE<<4;
-    d.pm=d.ps=64;
+    A->asset_read(DEMOD_INIT,&d,sizeof d);  /* initial state, then both cosine tables */
     sl[0].wa=2; sl[0].wb=3;      /* favours space */
     sl[1].wa=1; sl[1].wb=1;
     sl[2].wa=3; sl[2].wb=2;      /* favours mark  */
-    for(uint8_t k=0;k<NSL;k++) sl[k].crc=0xFFFFu;
+    /* hdlcBit initializes the CRC at the opening flag, before collecting bytes. */
 
     adcSelPA4();
     clkStart();
@@ -721,16 +771,20 @@ static void listen(void){
 
 __attribute__((section(".text.entry"),used))
 void app_main(const app_api_t *api){
-    uint8_t frm[FRAME_MAX];      /* on the stack: the 4 KiB overlay also holds .bss */
+    frame_t frames[HISTORY];    /* on the stack: the 4 KiB overlay also holds .bss */
+    frame_t *history[HISTORY];
+    for(unsigned k=0;k<HISTORY;k++) history[k]=&frames[k];
     char text[34];
     g.A=api;
     g.text=text;
-    g.frm=frm;
+    g.history=history;
     /* The overlay loader zeroes g; the first idle key scan records APP_KEY_INVALID. */
 
-    g.savedSqr3=ADC_SQR3; g.savedSmpr3=ADC_SMPR3; g.savedModer=GPIOA_MODER; g.savedDac=DAC_CR;
-    g.savedRcc=RCC_APBENR1; g.savedDhr=DAC_DHR12R1;
-    biasOn();
+    g.savedSqr3=ADC_SQR3; g.savedSmpr3=ADC_SMPR3;
+    /* Only app_main needs these snapshots; keep them outside the overlay .bss. */
+    const uint32_t savedModer=GPIOA_MODER, savedDac=DAC_CR;
+    const uint32_t savedRcc=RCC_APBENR1, savedDhr=DAC_DHR12R1;
+    biasOn(savedModer,savedRcc);
     api->backlight_on();
     api->cfg_load(&g.cw,2);      /* view and speaker; erased flash (0xFF) or junk:
                                     scroll, speaker off */
@@ -747,7 +801,7 @@ void app_main(const app_api_t *api){
     g.running=true;
     listen();
 
-    biasOff();
+    biasOff(savedDac,savedDhr,savedRcc,savedModer);
     api->set_af(APP_AF_MUTE);
     api->audio_path(false);
     api->cfg_save(&g.cw,2);      /* staged: flash is written only after a change */

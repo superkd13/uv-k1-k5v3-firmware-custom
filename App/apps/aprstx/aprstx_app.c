@@ -158,10 +158,10 @@ static char *puti(char *o,int32_t v){
 static void tiny(uint8_t y,char *end){ *end='\0'; g.A->print_tiny(str,0,y,false,true); }
 
 /* The frame is shown above the separator (y = 31), in one of two views (key *),
- * as in APRS RX:
+ * as in APRS RX, with the source fixed on line 0 and the body scrolling below:
  * - scroll (g.cw = 0): rows of 18 characters in the small font (7 px each),
- *   8 px apart (glyphs 7 px, bit 7 blank), scrolled by g.top pixels: 4 rows
- *   show at g.top = 0;
+ *   8 px apart (glyphs 7 px, bit 7 blank), scrolled by g.top pixels: the source
+ *   and 3 body rows show at g.top = 0;
  * - compact (g.cw = CW_COMPACT): the source in the small font, then rows of 32
  *   tiny characters (4 px each), 6 px apart from y = 8, the 4th ending at
  *   y = 30; no scroll, the rest of the frame is not shown. */
@@ -172,7 +172,8 @@ static void tiny(uint8_t y,char *end){ *end='\0'; g.A->print_tiny(str,0,y,false,
  * clips). Scroll view: row r goes to line r - top/8 when that is 0..4: line 4
  * (under the separator, redrawn after) only feeds the pixel shift of draw().
  * Row 0, the source, is drawn in bold (same 7 px glyphs) on line 0 in both
- * views; compact rows 1-4 in the tiny font, the next ones dropped. */
+ * views. In scroll view draw() redraws it after the pixel shift; compact rows
+ * 1-4 use the tiny font and the next ones are dropped. */
 static void emit(char *end){
     const app_api_t *A=g.A;
     char *p=str;
@@ -436,6 +437,14 @@ static void draw(void){
         uint8_t sh=g.top&7u, *b=A->fb[0];
         for(uint16_t k=0;k<512u;k++) b[k]=(uint8_t)((b[k]>>sh)|(b[k+128u]<<(8u-sh)));
         memset(b+512,0,128);
+
+        /* Keep the source fixed while the body scrolls underneath it, as APRS
+         * RX does. Any body pixels shifted into line 0 are deliberately hidden. */
+        if(g.flen){
+            memset(b,0,128);
+            *putCall(str,g.frm+7)='\0';
+            A->print_bold(str,0,0,0);
+        }
 
         /* dotted separator above the frequency: y = 31, bit 7 of line 3, over
          * whatever the shift brought there (the big digits start at y = 33: one

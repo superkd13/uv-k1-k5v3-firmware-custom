@@ -20,30 +20,41 @@ Status:
    real beacons, or the generator frequency (433.650 MHz on the bench).
 2. Launch **EPIRB 406** with no burst in progress: the noise floor is measured at
    launch.
-3. Lower the volume: the RX audio must stay on (it is what reaches PA4), so the
-   speaker plays each burst.
+3. The speaker is off by default. Key 1 turns it on if you want to hear the
+   bursts; decoding still receives the BK4829 AF signal on PA4 while it is off.
 
 Each burst is detected on RSSI (10 dB above the floor), sampled for up to 900 ms
-and decoded. The last decoded message stays on screen (the 2-message history was
-dropped in v1.5 to make room for tuning).
+and decoded. The five latest messages stay in RAM, newest first. A new decode is
+shown immediately from its first detail row. The history is lost on exit.
 
 | Screen | Content |
 |---|---|
-| Line 0 | 15-hex ID |
-| Line 1 | Country code and protocol |
-| Line 2 | Position (5 decimals, truncated) or "no position" |
-| Line 3 | Tuned frequency and offset from the VFO, e.g. `433.645 -5 kHz` (v1.5; up to v1.4: `END` + raw bits 105-144) |
-| Small rows | SELF-TEST, LONG/SHORT, BCH-1/BCH-2; `#` decode number, RSSI of the burst, internal/external position source, 121.5 homing, `coarse` (no PDF-2 offsets), `rawID` (not a standard location protocol, ID = raw bits 26-85) |
-| Bottom row | RSSI / floor, decodes ok, errors, last error: `nosync` (no frame sync found) or `cut` (sync found, message incomplete) |
+| Status bar | `EPIRB 406`, speaker icon while enabled, and arrows when details or another history entry exist above/below |
+| Before the first frame | Blinking `WAITING...` in the body |
+| Fixed line 0 | 15-hex ID in bold and, with several messages, the selected/newest count (`2/5`) at its right |
+| Scrolled body | Country and protocol; latitude and longitude together on one row when they fit, otherwise on two rows in normal view; SELF-TEST and LONG/SHORT; BCH-1/BCH-2 (`BCH OK / OK`, with `--` on a short message); internal/external source and flags on their own row when present (`EXT 121`, `INT`, `COARSE`, `RAW ID`), then the frame sequence and burst RSSI on the row below (`FRAME 3 -95dBm`). `121` abbreviates the 121.5 MHz homing transmitter. Both views always keep 5 coordinate decimals. Normal view puts BCH on its own line without indentation; compact view appends it to the SELF-TEST / LONG/SHORT row |
+| Dotted separator | APRS-style line at y=40, above the two fixed information rows |
+| Fixed tuning row | Current RX frequency prefixed by `RX` and its offset from the VFO, updated immediately by keys 4/5/6; current RSSI and noise floor in dBm are shown as `-40 / -100dBm` at the right |
+| Bottom row | Complete frames (`FRAME`), failed captures (`ERROR`), last error: `NOSYNC` (no frame sync found) or `CUT` (sync found, message incomplete) |
 
 Keys (UV-K5 and UV-K1):
 
 | Key | Action |
 |---|---|
-| UP / DOWN | Tune ±5 kHz from the VFO, up to ±50 kHz (direction follows the firmware's navigation setting, so K1 LEFT/RIGHT work as on the main screen) |
+| UP / DOWN (held) | Scroll the selected message one pixel per 50 ms slot (direction follows the firmware navigation setting, so K1 LEFT/RIGHT work as on the main screen) |
+| UP / DOWN (pressed again at an end) | Select the newer / older message, from its first detail row |
+| * | Normal / compact view, saved on exit; returns to the first detail row. Normal view is the default |
+| 4 / 6 | Tune −5 / +5 kHz from the VFO, up to ±50 kHz |
 | 5 | Back to the VFO frequency |
-| MENU | Clear the last message and the counters |
+| 1 | Speaker on/off, saved on exit; off by default |
+| MENU | Clear all five messages and the counters |
 | EXIT | Quit (the firmware retunes to the VFO frequency) |
+
+Sampling is never interrupted after frame synchronization. While still searching,
+the keyboard is first polled after 300 ms, then every 50 ms; a detected key cancels
+the false trigger without adding an error and restores the ADC. After every attempt,
+RSSI rearming runs in the main loop until the carrier drops or 1.5 seconds of
+wall-clock time elapse, so keys and the display remain responsive.
 
 Tuning writes the BK4829 frequency registers (0x38/0x39, 10 Hz units) and
 restarts the synthesizer (REG_30 to 0, then back) so it relocks; it only lasts
@@ -91,8 +102,8 @@ beacon RF --> BK4829 (RAW: no HPF300 / LPF3K / de-emphasis, AFC off)
 - **PA4** is the voice-prompt DAC pin. Voice is disabled in every preset, so the
   app switches the DAC off and reads PA4 as an analog input. Measured on the K1:
   idle 518, message range 165-894 (about 0.6 V p-p), no clipping.
-- The receive audio must be on (AF output enabled, audio path on): the speaker
-  plays the burst.
+- The BK4829 AF output stays enabled because PA4 receives it before the speaker
+  amplifier. Key 1 can therefore mute the speaker without stopping decoding.
 - **PA4 bias**: the pin has no DC reference; the app holds it at mid-scale with
   the MCU DAC (output buffer off, code 2048) for the whole run. The volume knob is analog; whether it changes the PA4 level
   still has to be checked.
@@ -312,7 +323,6 @@ a real bias reproduced on the host at the measured level.
 
 ## Version
 
-`APP_VER` in `build.sh` is bumped for every build that goes on a radio. It is
-written into the title text of the assets by `gen_assets.py` and shown in the
-status-bar title (e.g. `v1.1`), since the apps menu does not display versions.
-Current: **v1.7**.
+`APP_VER` in `build.sh` is bumped for every build that goes on a radio and is
+stored in the `.app` metadata. The status-bar title stays simply `EPIRB 406`.
+Current: **v1.8**.

@@ -78,7 +78,8 @@ for app in "${TARGETS[@]}"; do
     if docker run --rm ${TTY_ARG:+"$TTY_ARG"} -u "$(id -u):$(id -g)" \
             -v "$PWD":/work -w "/work/$APPS_DIR/$app" \
             -e PATH="/opt/toolchain/bin:/usr/bin:/bin" -e APP_VMA="$APP_VMA" \
-            "$IMAGE" bash -c "set -o pipefail; sed 's/\r$//' ./build.sh | bash"; then
+            "$IMAGE" bash -c "set -eo pipefail; rm -f -- \"\$1\"; sed 's/\r$//' ./build.sh | bash" \
+            bash "$app.map"; then
         appfile=$(ls -1 "$APPS_DIR/$app"/*.app 2>/dev/null | head -1)
         if [ -n "$appfile" ] && [ -f "$appfile" ]; then
             cp -f "$appfile" "$OUT_DIR/"
@@ -86,13 +87,23 @@ for app in "${TARGETS[@]}"; do
             code=$(( $(read_u32le "$appfile" 8) ))       # app_header_t.code_size
             assets=$(( $(read_u16le "$appfile" 60) ))    # app_header_t.asset_size
             vma=$(read_u32le "$appfile" 52)
-            state="✅ OK"; [ "$code" -gt "$OVERLAY_MAX" ] && { state="🚨 OVERFLOW"; fail=1; }
+            state="✅ OK"; [ "$code" -gt "$OVERLAY_MAX" ] && { state="🚨 OVERFLOW (+$((code - OVERLAY_MAX)) B)"; fail=1; }
             [ "$assets" -gt 0 ] && state="$state (+$assets B assets)"
         else
             base="$app.app"; code=-1; assets=0; vma="--"; state="❌ NO BLOB"; fail=1
         fi
     else
         base="$app.app"; code=-1; assets=0; vma="--"; state="❌ BUILD FAIL"; fail=1
+        # The linker still emits a map when the overlay size assertion fails.
+        # The container removes the previous map before building, so a compile
+        # error cannot be mistaken for an overflow from an earlier attempt.
+        mapfile="$APPS_DIR/$app/$app.map"
+        if [ -f "$mapfile" ]; then
+            map_size=$(awk '$1 == ".app" && $2 ~ /^0x[0-9a-fA-F]+$/ && $3 ~ /^0x[0-9a-fA-F]+$/ { print $3; exit }' "$mapfile")
+            if [[ "$map_size" =~ ^0x[0-9a-fA-F]+$ ]] && [ "$((map_size))" -gt "$OVERLAY_MAX" ]; then
+                state="🚨 OVERFLOW (+$((map_size - OVERLAY_MAX)) B; $((map_size)) / $OVERLAY_MAX B)"
+            fi
+        fi
     fi
     files+=("$base"); sizes+=("$code"); vmas+=("$vma"); states+=("$state"); asset_sizes+=("$assets")
 done

@@ -925,7 +925,7 @@ static uint8_t    gFullWatchBackgroundCount;
 static uint8_t    gFullWatchSequenceIndex = 0xFFu;
 static uint8_t    gFullWatchScrollPhase;
 
-static void FullWatchReset(void)
+void APP_FullWatchReset(void)
 {
     gFullWatchForegroundVfo = NULL;
     gFullWatchCurrentBackground = 0xFFu;
@@ -2868,7 +2868,7 @@ Skip:
 
     if (gFlagReconfigureVfos) {
 #ifdef ENABLE_FEAT_F4HWN_FULL_WATCH
-        FullWatchReset();
+        APP_FullWatchReset();
 #endif
         RADIO_SelectVfos();
 

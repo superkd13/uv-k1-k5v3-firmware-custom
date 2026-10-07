@@ -33,6 +33,7 @@ UI = [
     ("T_DENIED", "TX denied"),
     ("T_ABORT",  "TX aborted"),
     ("T_NOPIC",  "No picture yet"),
+    ("T_RXABORT","RX aborted"),
     ("T_DITHER", "dither"),
     ("T_1BIT",   "1-bit"),
     ("T_HELP",   "PTT send 1/F1mode 2bw 3spk 4view"),   # 32 tiny characters
@@ -41,7 +42,8 @@ UI = [
 # The status line of the info screen, by ST_* (sstv_app.c): its text's offset
 # in the UI block. RX, OK and LOST follow the mode of the picture, RX is
 # followed by "period/periods". WAIT is shown as a capsule in the status bar.
-STATUS = ["T_WAIT", "T_RX", "T_OK", "T_LOST", "T_SENT", "T_DENIED", "T_ABORT", "T_NOPIC"]
+STATUS = ["T_WAIT", "T_RX", "T_OK", "T_LOST", "T_SENT", "T_DENIED", "T_ABORT", "T_NOPIC",
+          "T_RXABORT"]
 
 assert all(len(s) <= 32 for n, s in UI if n == "T_HELP")   # print_tiny does not clip
 

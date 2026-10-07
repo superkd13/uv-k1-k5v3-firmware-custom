@@ -1,7 +1,7 @@
 # APRS RX: on-radio APRS receiver (work in progress)
 
 Goal: an overlay app that receives APRS (AX.25 UI frames, Bell 202 AFSK 1200
-bauds) on the UV-K1 / UV-K5 v3 and shows the last frame, then an APRS TX app.
+bauds) on the UV-K1 / UV-K5 v3 and keeps the last five frames, shown one at a time.
 
 Status:
 
@@ -38,21 +38,35 @@ back-to-back flags) or a frame whose first bytes look like a callsign (busy
 ~4 % of the time on noise, in the model), and after 3 s of busy at the latest.
 The screen is redrawn after a new frame, a key, or every 5 s.
 
+The RAM history holds five frames, newest first; a new frame replaces the
+oldest when the history is full. The screen shows one frame at a time: its
+callsign in the large bold font, fixed on line 0, and its body scrolled under it
+(y = 8 to 30). At the right of the callsign, once several frames are kept, a capsule
+tells which frame is shown: `2/5`, the second newest of five kept (`1` is the
+newest). Left of it (or alone at the edge with a single frame), a second capsule
+shows the count of frames received. The symbol and RSSI are those of the frame shown. A new frame is
+shown at once, from its first row. UP/DOWN held scrolls the body and stops at
+its first / last row; pressing the key again there shows the newer (UP) or older
+(DOWN) frame from its first row, so holding a key never leaves the frame. Body
+rows occupy eight pixels in normal mode (3 rows at rest) or six in compact mode
+(4 rows). History is lost on exit; no external-flash journal is used.
+
 | Screen | Content |
 |---|---|
-| Status bar | `APRS RX` title, then a `WAIT` capsule until the first frame, the speaker icon while the speaker is on, then ▲ while rows are hidden above and ▼ while rows are hidden below (x = 72-76 as in APRS TX, the speaker icon at x = 59-68; both drawn in one asset read) |
-| Lines 0-3 | The frame in the small font (18 characters a row, non-ASCII shown as `.`), 4 rows at a time, scrolled pixel by pixel with UP/DOWN (v0.7): source call in bold, `>DEST,DIGI*,...` (as many path entries as fit two rows), then the info field, whole. For Mic-E (most Yaesu/Kenwood beacons, v0.3): latitude `48 50.89N`, longitude `002 16.25E`, speed km/h, course and symbol, the message type (`Off Duty`, `En Route`...), then altitude and comment without the device markers; for an uncompressed position (`!` `=` `/` `@`, v0.5): latitude, longitude, then the timestamp if any, the symbol (table + code) and the comment. Compressed positions stay raw text. A new frame scrolls back to the top. Key * switches to the compact view (below) |
-| Lines 4-6 | Under a dotted separator (y=31), the frequency drawn as the main screen draws it (big digits up to the kHz, the last two in the small font), aligned left. A matching 20x20 bitmap from the 48-symbol Yaesu set is shown at x=108 on the right for decoded Mic-E and uncompressed positions; the area stays blank for an unknown or unavailable symbol |
-| Bottom row y=49 | `ok 12  -89dBm`: frames received, RSSI at the end of the last frame. (v0.4-v0.5 also showed frames per slicer, `sl a/b/c`: on air the outer slicers found frames too; dropped in v0.6 to fit the speaker key) |
+| Status bar | `APRS RX` title, then a `WAIT` capsule until the first frame, the speaker icon while the speaker is on, then ▲ while rows or a newer frame are hidden above and ▼ while rows or an older frame are hidden below (x = 72-76 as in APRS TX, the speaker icon at x = 59-68; both drawn in one asset read) |
+| Lines 0-3 | One frame: source call in bold, fixed on line 0, with two capsules at the right (the frames received, then with several frames kept `2/5`, frame shown / frames kept, 1 = newest; x >= 89); under it the body in the small font (18 characters a row, non-ASCII shown as `.`), 3 rows at a time, scrolled pixel by pixel with UP/DOWN (v0.7): `>DEST,DIGI*,...` (as many path entries as fit two rows), then the info field, whole. For Mic-E (most Yaesu/Kenwood beacons, v0.3): latitude `48 50.89N`, longitude `002 16.25E`, speed km/h, course and symbol, the message type (`Off Duty`, `En Route`...), then altitude and comment without the device markers; for an uncompressed position (`!` `=` `/` `@`, v0.5): latitude, longitude, then the timestamp if any, the symbol (table + code) and the comment. Compressed positions stay raw text. A new frame is shown at once. Key * switches to the compact view (below) |
+| Lines 4-6 | Under a dotted separator (y=31), the frequency drawn as the main screen draws it (big digits up to the kHz, the last two in the small font), aligned left. A matching 20x20 bitmap from the 48-symbol Yaesu set is shown at x=108, y=33-52, on the right for decoded Mic-E and uncompressed positions; an overlay symbol (table `0`-`9` or `A`-`Z`, as `L&` or `D&`) without a bitmap of its own (`E0`, `YY`) shows the alternate-table symbol it is drawn over (`\&`), the overlay character staying readable in the body text; the area stays blank for an unknown or unavailable symbol |
+| Bottom row y=49 | `-89dBm`: RSSI at the end of the frame shown (the count of frames received moved to the capsule on line 0). (v0.4-v0.5 also showed frames per slicer, `sl a/b/c`: on air the outer slicers found frames too; dropped in v0.6 to fit the speaker key) |
 
 Keys (UV-K5 and UV-K1):
 
 | Key | Action |
 |---|---|
-| UP/DOWN (held) | Scroll the frame 1 px per 50 ms slot (UV-K1: LEFT/RIGHT, as `nav_dir`), from the source row down to the last row |
-| * | Scroll view / compact view, saved on exit (the flash is written only after a change). Compact: the source stays fixed in bold, then the path and info use the tiny 3x5 font, 32 characters each (position `48 50.89N 002 16.25E` on one row, speed, course, symbol and message type on the next, then the comment). If more than four tiny rows are needed, UP/DOWN scrolls that area vertically by 1 px |
+| UP/DOWN (held) | Scroll the body of the frame shown 1 px per 50 ms slot (UV-K1: LEFT/RIGHT, as `nav_dir`), down to its last row |
+| UP/DOWN (pressed again at the first / last row) | Show the newer / older frame, from its first row |
+| * | Normal / compact view, saved on exit, returns to the first row of the frame shown. The callsign stays large and bold on line 0. Body rows use the normal font (18 characters) or 3x5 font (32 characters), continuous 1 px scrolling |
 | 1 | Speaker on/off, saved on exit (v0.8; off by default); FoxHunt's speaker icon in the status bar while on |
-| 2 | Clear the last frame and the counters |
+| 2 | Clear all five frames and the counters |
 | EXIT | Quit |
 
 The receive path is the firmware's own (STD: 300 Hz high-pass, de-emphasis,
@@ -60,9 +74,22 @@ The receive path is the firmware's own (STD: 300 Hz high-pass, de-emphasis,
 EPIRB 406); every on-air decode was made in STD and the model shows no gain
 for RAW, so v0.4 dropped it to fit the 4 KiB overlay.
 
-The last good frame is kept on `app_main`'s stack and the demodulator state on
-`capture`'s: the 4 KiB overlay also holds `.bss`. The screen texts, symbol
-bitmaps and the two cos tables are assets.
+The five frame buffers and their rotating pointers live on `app_main`'s stack;
+the demodulator state lives in `listen`. Frames are copied only once on receipt;
+rotation moves pointers, not payloads. Buffers and pointers take 1690 bytes on
+the MCU, 1360 bytes more than the former 330-byte buffer (676 more than three
+frames), excluding compiler
+stack alignment and spill slots. The 4 KiB overlay also holds `.bss`. The screen
+texts, symbol bitmaps and the two cos tables are assets. The display loads a
+252-byte block containing 36 bytes of UI labels, 88 bytes of Mic-E messages and
+the 128-byte Mic-E lookup. Compared with the original label-only read, this adds
+212 temporary stack bytes and replaces character-decoding branches and separate
+message reads.
+
+The front-end initial state is stored in a 116-byte asset immediately before
+the cosine tables, allowing one read to initialize `dem_t`. This replaces the
+zeroing and initial-value assignments without adding a RAM buffer. Total assets
+occupy 3832 of the 3840 available bytes.
 
 ## Demodulator (`test/model_rx.py`, class `Demod`; the C is a transcription)
 

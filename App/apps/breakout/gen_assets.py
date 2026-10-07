@@ -37,9 +37,9 @@ def title_screen():
     for x in (2, 22, 86, 106):
         brick(cv, x, 42)
     for k in range(24):                         # racket, as renderRacket()
-        cv.set(52 + k, 54)
+        cv.set(52 + k, 52)
         if 0 < k < 23:
-            cv.set(52 + k, 53); cv.set(52 + k, 55)
+            cv.set(52 + k, 51); cv.set(52 + k, 53)
     cv.rect(62, 47, 64, 49)                     # ball, as renderBall()
     cv.set(61, 48); cv.set(65, 48)
     for i in range(0, 8, 2):                    # dotted trail

@@ -46,14 +46,14 @@ fails there (919 wrong pixels), v0.2 matches the model.
 | 2 | Rendering: **1-bit** (threshold, sharp for the logo; default) / **dither** (4x4 Bayer, for photos), from the next row on; right capsule; saved |
 | 3 | Speaker on / off (off by default: the decoder does not need it); saved |
 | 4 | Picture / info screen, once a picture came (before: `No picture yet`) |
-| EXIT | Quit (during a TX: abort it) |
+| EXIT | From the info screen: quit. During a TX or while a picture is being received: abort it and return to the info screen. From the picture view: return to the info screen |
 
 Info screen: `WAIT` in the status bar (x = 40, as APRS RX) until a picture
 comes, the speaker icon at x = 59 while on; on line 0, 3x5 capsules: the TX
 mode (key 1) on the left, the rendering (`1-BIT` / `DITHER`, key 2) on the
 right; the status with the mode of the picture (`PD120 123/248` (periods: two
 lines each in PD), `PD120 OK`, `PD120 lost`), or `Logo sent`, `TX denied`,
-`TX aborted`, `No picture yet`; the RX frequency; the keys.
+`TX aborted`, `RX aborted`, `No picture yet`; the RX frequency; the keys.
 
 ## Modes
 

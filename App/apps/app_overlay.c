@@ -836,7 +836,10 @@ uint8_t APP_LaunchOverlay(uint8_t slot)
      * so an RF app (FoxHunt, a future S-meter, ...) would measure and display a
      * VFO the user did not pick - sometimes A, sometimes B. Point RX at the
      * selected (TX) VFO and retune so rx_freq(), rssi_dbm() and the tuned
-     * hardware all agree on the selected channel. Save all three pointers:
+     * hardware all agree on the selected channel. gCurrentVfo follows too:
+     * RADIO_SetTxParameters keys it, and dual watch may have left it on the
+     * other VFO, so a TX app (APRS TX, Beacon, SSTV) would transmit there while
+     * tx_freq() shows the selected one. Save all three pointers:
      * radio apps such as BEAM temporarily replace them while they run. */
     const uint8_t     saved_rx_vfo = gEeprom.RX_VFO;
     VFO_Info_t *const saved_rx      = gRxVfo;
@@ -844,6 +847,7 @@ uint8_t APP_LaunchOverlay(uint8_t slot)
     VFO_Info_t *const saved_current = gCurrentVfo;
     gEeprom.RX_VFO = gEeprom.TX_VFO;
     gRxVfo         = gTxVfo;
+    gCurrentVfo    = gTxVfo;
     RADIO_SetupRegisters(true);
 
     app_entry_t entry = (app_entry_t)(((uint32_t)ws + h.entry_off) | 1u);

@@ -8,7 +8,7 @@ set -euo pipefail
 
 APP="$(basename "$PWD")"            # breakout, foxhunt, beacon, fm, ...
 APP_NAME="EPIRB 406"                # <-- the only per-app line
-APP_VER="1.7"
+APP_VER="1.8"
 APP_API_MIN=2
 APP_VMA=${APP_VMA:-0x20000280}      # pinned overlay VMA (Core/py32f071xb.ld)
 OUT="${APP_NAME// /}"               # blob basename ("Broadcast FM" -> BroadcastFM)
@@ -27,7 +27,7 @@ rm -f ./*.app ./*.elf ./*.bin        # drop stale artifacts so discovery is unam
 step() { printf '\r  🔨 %-13s [%d/4] %-8s' "$APP_NAME" "$1" "$2"; }
 trap 'printf "\r  ❌ %-13s build failed            \n" "$APP_NAME"' ERR
 
-step 1 assets  ; APP_VER="$APP_VER" python3 ./gen_assets.py "${APP}_assets.bin" "${APP}_assets.h"
+step 1 assets  ; python3 ./gen_assets.py "${APP}_assets.bin" "${APP}_assets.h"
 step 2 compile ; "$CC" $CFLAGS $LDFLAGS "${APP}_app.c" -lgcc -o "${APP}.elf"
 step 3 objcopy ; "$OBJCOPY" -O binary "${APP}.elf" "${APP}.bin"
 step 4 pack    ; python3 ../pack_app.py "${APP}.bin" "${OUT}.app" \

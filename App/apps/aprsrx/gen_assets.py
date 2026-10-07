@@ -25,7 +25,6 @@ UI = [
     ("T_TITLE",  TITLE),
     ("T_WAIT",   WAIT_CAPS),
     ("T_DBM",    "dBm"),
-    ("T_OK",     "ok "),
     ("T_KMH",    "km/h "),
     ("T_CUSTOM", "Custom-"),
 ]
@@ -38,16 +37,30 @@ def cos_table(f):
     per = FS // math.gcd(FS, f)
     return [int(round(127 * math.cos(2 * math.pi * f * n / FS))) for n in range(per)]
 
+def mic_code(c):
+    """Digit in bits 0-3, message/position bit in bit 4, custom flag in bit 5."""
+    digit = 0
+    for base in (ord('0'), ord('A'), ord('P')):
+        if base <= c < base + 10:
+            digit = c - base
+    custom = ord('A') <= c <= ord('K')
+    bit = c >= ord('P') or custom
+    return digit | (int(bit) << 4) | (int(custom) << 5)
+
 a = Assets("APRSRX")
 ui_size = 0
 for name, s in UI:
     pad = -(len(s) + 1) % 4                 # keep every offset word-aligned
     a.text(name, s + "\0" * pad)
     ui_size += len(s) + 1 + pad
-a.const("UI_SIZE", ui_size)                 # the UI block read by draw()
+a.u8("T_MIC", [mic_code(c) for c in range(128)])
 a.const("T_TITLE_CHARS", len(TITLE))
 a.const("T_WAIT_CHARS", len(WAIT_CAPS))
 a.table("T_MSG", MIC_MSG)                    # Mic-E standard messages
+# Assets.build() places every text/table before binary data. Include the
+# messages between the UI labels and T_MIC in the single display read.
+ui_size += len(MIC_MSG) * (max(map(len, MIC_MSG)) + 1) + 128
+a.const("UI_SIZE", ui_size)
 # The status bar from x = 59 (SPK_X), in one asset_read: the speaker icon
 # (bit 0 of the index), 3 blank columns, then the scroll marks at x = 72, up
 # (bit 1, rows hidden above) in bits 0-2, down (bit 2, rows hidden below) in
@@ -60,9 +73,11 @@ for i in range(8):
     tail += [(u if i & 2 else 0) | (d if i & 4 else 0) for u, d in zip(UP, DN)]
 a.u8("BMP_TAIL", tail)
 a.const("TAIL_W", len(tail) // 8)
+# Perfect hash of (table, code) over 128 slots, as drawSymbol() computes it: the
+# multiplier is the smallest one without a collision for the current CODES.
 symbol_map = bytearray(128 * 3)
 for index, code in enumerate(CODES):
-    slot = (2 * ord(code[0]) + 13 * ord(code[1])) & 127
+    slot = (ord(code[0]) + 59 * ord(code[1])) & 127
     if symbol_map[slot * 3]:
         raise ValueError("APRS symbol hash collision")
     symbol_map[slot * 3:slot * 3 + 3] = bytes((index + 1, ord(code[0]), ord(code[1])))
@@ -71,6 +86,10 @@ a.raw("SYM_BITMAPS", BITMAPS)
 a.const("SYM_COUNT", len(CODES))
 a.const("SYM_W", WIDTH)
 a.const("SYM_BYTES", BYTES_PER_ICON)
+# dem_t prefix: dc, eight filter/correlator words, pm/ps, r/ks, ring.
+# Append the existing cosine tables so one read initializes the entire front end.
+a.u32("DEMOD_INIT", [2048 << 4] + [0] * 8 + [64, 64] + [0] * 18)
 a.i8("COS1200", cos_table(1200))            # 8 entries
 a.i8("COS2200", cos_table(2200))            # 48 entries
-a.main()
+if __name__ == "__main__":
+    a.main()

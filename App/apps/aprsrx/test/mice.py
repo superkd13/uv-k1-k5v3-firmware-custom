@@ -196,6 +196,44 @@ def info_start(f):
 
 def main():
     ok = True
+    # Import the generator without writing assets; check every destination code.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from gen_assets import a, mic_code, MIC_MSG
+    blob, fields, _ = a.build()
+    offsets = {name: (offset, size) for name, offset, size in fields}
+    symbol_offset, symbol_size = offsets["SYM_MAP"]
+    for slot in range(symbol_offset, symbol_offset + symbol_size, 3):
+        assert not blob[slot] or blob[slot + 1] != 0
+    # Verify the serialized front-end state independently of its generator.
+    import struct
+    init_offset, init_size = offsets["DEMOD_INIT"]
+    assert init_size == 116
+    words = struct.unpack_from('<29I', blob, init_offset)
+    assert words[0] == 32768 and words[9:11] == (64, 64)
+    assert all(value == 0 for i, value in enumerate(words) if i not in (0, 9, 10))
+    assert offsets["COS1200"][0] == init_offset + init_size
+    assert offsets["COS2200"][0] == init_offset + init_size + 8
+    assert len(blob) <= 3840
+    print(f"Demodulator initial state and table layout OK; assets {len(blob)}/3840 bytes")
+    ui_size = dict(a.extra)["UI_SIZE"]
+    for name in ("T_MIC", "T_MSG"):
+        offset, size = offsets[name]
+        assert offset + size <= ui_size
+    lut_offset, lut_size = offsets["T_MIC"]
+    assert lut_size == 128
+    for c in range(128):
+        packed = blob[lut_offset + c]
+        assert packed == mic_code(c)
+        assert packed & 15 == mic_digit(c)
+        assert bool(packed & 16) == mic_bit(c)
+        assert bool(packed & 32) == (0x41 <= c <= 0x4B)
+    print("Mic-E asset lookup: all 128 codes equivalent")
+    msg_offset, _ = offsets["T_MSG"]
+    stride = dict(a.extra)["T_MSG_STRIDE"]
+    for index, message in enumerate(MIC_MSG):
+        start = msg_offset + index * stride
+        assert blob[start:start + stride].split(b'\0', 1)[0].decode('ascii') == message
+    print(f"UI asset read: all messages and lookup covered by {ui_size} bytes")
     # the FT3D frame received on 2026-09-30 (screen: >TXUPX9, `x,5l .[/`_0.)
     ft3d = _frame("F4HWN", "TXUPX9", (), b"`x,5l \x1c[/`_0\r")
     i, end = info_start(ft3d)

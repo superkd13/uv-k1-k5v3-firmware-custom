@@ -52,7 +52,9 @@
  *   1 the previous one (F icon in the status bar while armed, as APRS TX) ·
  *   2 rendering 1-bit / dither · 3 speaker on/off (off at launch: the decoder
  *   does not need it) · 4 picture / info screen (once a picture came) ·
- *   EXIT quit (abort a TX). TX mode, rendering and speaker are saved.
+ *   EXIT quit from the info screen (abort a TX or a picture being received,
+ *   leave the picture view first). TX mode, rendering
+ *   and speaker are saved.
  * The loader re-runs RADIO_SetupRegisters on exit; the app restores the ADC,
  * PA4, the DAC and its clock itself.
  */
@@ -147,7 +149,7 @@ _Static_assert(sizeof(mrx_t)==MODE_RX && sizeof(mode_t)==MODE_SIZE,
 
 enum { H_HUNT = 0, H_VIS, H_LINE };
 /* info screen status: the order of ST_TEXT in gen_assets.py */
-enum { ST_WAIT = 0, ST_RX, ST_OK, ST_LOST, ST_SENT, ST_DENIED, ST_ABORT, ST_NOPIC };
+enum { ST_WAIT = 0, ST_RX, ST_OK, ST_LOST, ST_SENT, ST_DENIED, ST_ABORT, ST_NOPIC, ST_RXABORT };
 
 #define WAIT_CAPS_X 40u    /* "WAIT" capsule in the status bar, after the title (APRS RX) */
 #define SPK_X       59u    /* speaker icon (FoxHunt's, x = 59-68) after the capsule (APRS RX) */
@@ -581,7 +583,14 @@ static void handleKeys(void){
     if(key==APP_KEY_F){ g.fArm^=1u; return; }   /* as APRS TX: icon while armed */
     bool back=g.fArm;                    /* F then a key: it goes backwards */
     g.fArm=0;
-    if(key==APP_KEY_EXIT) g.running=false;
+    if(key==APP_KEY_EXIT){
+        /* inside a picture: drop it and go back to the info screen, as EXIT
+         * aborts a TX; what came so far stays viewable (key 4). From the
+         * picture view: back to the info screen. From the info screen: quit. */
+        if(g.st==H_LINE){ hunt(); g.status=ST_RXABORT; g.image=0; }
+        else if(g.image) g.image=0;
+        else g.running=false;
+    }
     else if(key==APP_KEY_PTT||key==APP_KEY_MENU) send();
     else if(key==APP_KEY_1){             /* next TX mode, F then 1 the previous one */
         if(back) g.txMode=(uint8_t)(g.txMode?g.txMode-1u:MODE_COUNT-1u);

@@ -205,7 +205,7 @@
             "cacheVariables": {
                 "ENABLE_FEAT_KD_MSG": true,
                 "EDITION_STRING": "Labs-MSG",
-                "TARGET": "f4hwn.labs_msg"
+                "TARGET": "f4hwn.labs-msg"
             }
         },
         {

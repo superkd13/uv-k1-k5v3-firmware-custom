@@ -54,15 +54,16 @@ class Emu:
         self.logo = logo or bytes(1024)
         self.T = 0
         self.writes = []        # (T, reg, value)
-        self.cfg = b"\xff\xff\xff"
+        self.cfg = b"\xff\xff\xff\xff"   # erased: no saved picture
         self.saved = None
         self.assets = open(BUILD + "/sstv_assets.bin", "rb").read()
         self.blits = 0
         u = self.u = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
         u.mem_map(RAM, RAM_SZ)
-        for base in (0x40007000, 0x40012000, 0x40021000, 0x50000000, 0xE000E000):
+        for base in (0x40007000, 0x40012000, 0x40013000, 0x40021000, 0x50000000, 0xE000E000):
             u.mem_map(base, 0x1000)
         u.mem_write(0xE000E014, struct.pack("<I", 479999))
+        u.mem_write(0x40013008, struct.pack("<I", 3))  # SPI1 TXE | RXNE
         with open(BUILD + "/sstv.elf", "rb") as f:
             elf = ELFFile(f)
             for seg in elf.iter_segments():
@@ -86,6 +87,7 @@ class Emu:
         u.hook_add(UC_HOOK_CODE, self.on_stub, begin=STUB, end=STUB + 4 * len(API_NAMES))
         u.hook_add(UC_HOOK_MEM_READ, self.on_syst, begin=0xE000E018, end=0xE000E01B)
         u.hook_add(UC_HOOK_MEM_READ, self.on_adc, begin=0x40012400, end=0x40012453)
+        u.hook_add(UC_HOOK_MEM_WRITE, self.on_spi, begin=0x4001300C, end=0x4001300F)
 
     def on_syst(self, u, access, addr, size, value, data):
         self.T += K                         # the app's busy-wait loops advance time
@@ -99,6 +101,9 @@ class Emu:
             i = self.T // 5000
             v = self.adc[i] if i < len(self.adc) else 2048
             u.mem_write(addr, struct.pack("<I", v))
+
+    def on_spi(self, u, access, addr, size, value, data):
+        self.T += 512                       # one byte at SPI 750 kHz
 
     def r(self, n):
         return self.u.reg_read((UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)[n])
@@ -178,14 +183,14 @@ class Emu:
         return [[pages[(y >> 3) * 128 + x] >> (y & 7) & 1 for x in range(128)] for y in range(64)]
 
 def tx_test(logo, mode):
-    """PTT at once in TX mode `mode`; quit once the TX is over."""
+    """MENU at once in TX mode `mode`; quit once the TX is over."""
     ev = m.tx_events(logo, mode)
     secs = sum(c for _, c in ev) / m.CPU + 2
     state = {"n": 0}
     def keys(e):
         state["n"] += 1
         if state["n"] == 1:
-            return 16                      # PTT
+            return 10                      # MENU
         if e.T > 48_000_000 * secs:
             return 13                      # EXIT
         return 19

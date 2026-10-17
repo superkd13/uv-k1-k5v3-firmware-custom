@@ -16,7 +16,7 @@ a.text("T_CALL", "CALL")
 a.text("T_CARR", "CARR")
 a.text("T_TONE", "TONE")
 a.text("T_TX_OFF", "TX OFF")
-# Fox identifiers by foxFox (0..FOX_MO); FOX_CALL sends "<call> " + entry 0.
+# Fox identifiers by foxFox (0..FOX_MO); FOX_CALL_MOE appends entry 0 to the callsign.
 a.table("FOX_ID", ["MOE", "MOI", "MOS", "MOH", "MO5", "MO"])
 # Sentinel-prefixed Morse (leading 1, then elements MSB-first: 0 dit, 1 dah):
 # A..Z, then 0..9, then '/'.

@@ -135,8 +135,9 @@ enum ACTION_OPT_t {
     ACTION_OPT_FOXHUNT        = 22,
     ACTION_OPT_BEACON         = 23,
     ACTION_OPT_MSG            = 24,
+    ACTION_OPT_TONECALL       = 25,
 
-    ACTION_OPT_LEN            = 25
+    ACTION_OPT_LEN            = 26
 };
 
 #ifdef ENABLE_VOICE

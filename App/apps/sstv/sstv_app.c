@@ -25,7 +25,7 @@
  * offsets of its picture scans from the sync end, their weights in the
  * luminance, the period and the pixel step.
  *
- * TX (PTT or MENU): the boot logo (128x64, 1 bit, external flash 0x011008, as
+ * TX (MENU): the boot logo (128x64, 1 bit, external flash 0x011008, as
  * ui/welcome.c reads it), each scan carrying the logo row in 128 equal columns
  * (scan / 128: whole cycles at 48 MHz), the 64 rows spread over the periods;
  * grey (every colour scan the same, neutral chroma): a dark LCD pixel is black
@@ -46,9 +46,11 @@
  * (threshold) or dithered (4x4 Bayer), key 3. The chroma is ignored: grey.
  * The picture fills the whole screen, status line included; the keys and the
  * row just drawn (one LCD page, ~1.5 ms) are served after each period's last
- * scan, before its sync ends.
+ * scan, before its sync ends. Page blits drive the LCD SPI directly: the
+ * resident line blit also forces a blocking K5Viewer frame, which would turn
+ * the skipped picture data into bands.
  *
- * Keys (UV-K5 and UV-K1): PTT or MENU send the logo · 1 next TX mode, F then
+ * Keys (UV-K5 and UV-K1): MENU sends the logo · 1 next TX mode, F then
  *   1 the previous one (F icon in the status bar while armed, as APRS TX) ·
  *   2 rendering 1-bit / dither · 3 speaker on/off (off at launch: the decoder
  *   does not need it) · 4 picture / info screen (once a picture came) ·
@@ -82,6 +84,10 @@ static inline volatile uint32_t *hw(uint32_t a){
 #define ADC_SQR3    (hw(0x40012400u)[0x38/4])
 #define ADC_DR      (hw(0x40012400u)[0x50/4])
 #define GPIOA_MODER (*(volatile uint32_t *)0x50000000u)
+#define SPI_SR_TXE     (1u << 1)
+#define SPI_SR_RXNE    (1u << 0)
+#define LCD_CS_PIN     (1u << 2)  /* PB2 */
+#define LCD_A0_PIN     (1u << 6)  /* PA6 */
 #define DAC_CR      (hw(0x40007400u)[0x00/4])
 #define DAC_SWTRIGR (hw(0x40007400u)[0x04/4])
 #define DAC_DHR12R1 (hw(0x40007400u)[0x08/4])
@@ -112,6 +118,7 @@ static inline volatile uint32_t *hw(uint32_t a){
 #define F2300       23746u
 
 #define MS(x)       ((x) * 48000u)     /* cycles at 48 MHz */
+#define LEAD_IN     1000u  /* ms of 1900 Hz before the VIS: squelch, repeater */
 #define LOGO_ADDR   0x011008u  /* ui/welcome.c LOGO_BITMAP_ADDR: 8 pages x 128 */
 
 /* ---- receiver (test/model.py, samples at 9.6 kHz) ---- */
@@ -124,6 +131,7 @@ static inline volatile uint32_t *hw(uint32_t a){
 #define VIS_BIT     288    /* 30 ms                                           */
 #define SYNC_WIN    96     /* +-10 ms around the prediction                   */
 #define MISS_MAX    20u    /* periods without a sync: lost                    */
+#define RELOCK      3u     /* periods without a sync: take one anywhere       */
 
 /* ---- a mode (test/modes.py record(), the MODES assets) ---- */
 enum { SEG_SCAN = 0, SEG_ALT = 1 };    /* else a segment code is a REG_71 value */
@@ -285,24 +293,43 @@ static void draw(void){
     drawFreq(A->rx_freq());
     A->print_tiny(s+T_HELP,0,49,false,true);
 }
-/* The current view to the LCD: the picture (whole screen) or the info screen. */
+/* The picture to the display buffers (whole screen, status line included). */
+static void picture(void){
+    const app_api_t *A=g.A;
+    memcpy(A->status_line,g.img,128);
+    memcpy(A->fb[0],g.img+128,896);
+}
+/* The current view to the LCD: the picture or the info screen. */
 static void show(void){
     const app_api_t *A=g.A;
-    if(g.image){
-        memcpy(A->status_line,g.img,128);
-        memcpy(A->fb[0],g.img+128,896);
-    } else draw();
+    if(g.image) picture(); else draw();
     A->blit_status();
     A->blit_full();
 }
-/* One LCD page (0 the status line, 1-7 the frame buffer) to the LCD: ~1.5 ms. */
-static void blitPage(unsigned pg){
-    const app_api_t *A=g.A;
-    if(pg) A->blit_line(pg-1u); else A->blit_status();
+/* One LCD byte over SPI1. The peripheral is already configured by ST7565_Init. */
+static inline void lcdByte(volatile uint32_t *spi,uint8_t v){
+    while(!(spi[0x08/4]&SPI_SR_TXE)){}
+    *(volatile uint8_t *)&spi[0x0C/4]=v;
+    while(!(spi[0x08/4]&SPI_SR_RXNE)){}
+    (void)*(volatile uint8_t *)&spi[0x0C/4];
 }
 static uint8_t *page(unsigned pg){
     const app_api_t *A=g.A;
     return pg?A->fb[pg-1u]:A->status_line;
+}
+/* One LCD page (0 the status line, 1-7 the frame buffer), without the resident
+ * ST7565_BlitLine side effect which forces a blocking K5Viewer frame. */
+static void blitPage(unsigned pg){
+    volatile uint32_t *spi=hw(0x40013000u), *pa=hw(0x50000000u), *pb=hw(0x50000400u);
+    pb[0x28/4]=LCD_CS_PIN;             /* CS low */
+    pa[0x28/4]=LCD_A0_PIN;             /* command */
+    lcdByte(spi,(uint8_t)(0xB0u|pg));  /* page */
+    lcdByte(spi,0x10u);                /* column high nibble */
+    lcdByte(spi,0x04u);                /* visible RAM starts at column 4 */
+    pa[0x18/4]=LCD_A0_PIN;             /* data */
+    uint8_t *p=page(pg);
+    for(unsigned x=0;x<128u;x++) lcdByte(spi,p[x]);
+    pb[0x18/4]=LCD_CS_PIN;             /* CS high */
 }
 
 /* ---- absolute cycle clock: the 10 ms SysTick interrupt count (ticks_ms) plus
@@ -366,8 +393,11 @@ static void send(void){
     A->tx_tone(1900);                    /* tone path on, mic off, 50 ms settle */
     g.f=F1900;
     g.next=clkCyc();
-    /* VIS: leader, break, leader, start bit, 7 bits LSB first + parity, stop */
-    tone(F1900,MS(300)); tone(F1200,MS(10)); tone(F1900,MS(300)); tone(F1200,MS(30));
+    /* VIS: leader, break, leader, start bit, 7 bits LSB first + parity, stop.
+     * The first leader is lengthened by LEAD_IN: a receiver's squelch, CTCSS
+     * decoder or a repeater's key-up eats the start of the transmission, and
+     * the VIS has to arrive whole (QSSTV sends an 800 ms header for this) */
+    tone(F1900,MS(LEAD_IN+300u)); tone(F1200,MS(10)); tone(F1900,MS(300)); tone(F1200,MS(30));
     for(unsigned i=0;i<8u;i++) tone(((md.rx.vis>>i)&1u)?F1100:F1300,MS(30));
     tone(F1200,MS(30));
     if(md.pre) tone(F1200,md.pre);
@@ -430,7 +460,9 @@ static void startImage(void){
     memset(g.acc,0,128u*sizeof g.acc[0]);
     memset(g.img,0,1024);
     g.per=g.m.per0;
-    g.miss=0;
+    g.miss=RELOCK;                       /* the first sync is taken anywhere: QSSTV sends
+                                            no sync after the VIS stop bit, its first line
+                                            starts 9 ms early, at the edge of the window */
     g.c=g.pred=g.t0+g.m.first;
     g.found=g.prevFound=0;
     g.st=H_LINE;
@@ -539,18 +571,28 @@ static void sample(int32_t adc){
                 if(g.st!=H_LINE) return;
             }
             int32_t err=n-g.pred;
-            if(!g.found && err>=-SYNC_WIN && err<=SYNC_WIN){
-                if(g.prevFound){        /* the period, 1/8 of the error, +-6 % */
-                    int32_t per=g.per+err*2, p0=g.m.per0, lim=p0>>4;
-                    if(per>p0+lim) per=p0+lim;
-                    if(per<p0-lim) per=p0-lim;
-                    g.per=per;
+            if(!g.found){
+                bool in=err>=-SYNC_WIN && err<=SYNC_WIN;
+                if(in){
+                    if(g.prevFound){    /* the period, 1/8 of the error, +-6 % */
+                        int32_t per=g.per+err*2, p0=g.m.per0, lim=p0>>4;
+                        if(per>p0+lim) per=p0+lim;
+                        if(per<p0-lim) per=p0-lim;
+                        g.per=per;
+                    }
+                    g.found=1;
+                    g.miss=0;
                 }
-                g.c=n;
-                g.found=1;
-                g.miss=0;
-                restart();
-                return;
+                /* lock lost (a sender whose first line is not where the VIS
+                 * says, a fade): after RELOCK periods on the prediction a sync
+                 * anywhere restarts the period. It does not count as found:
+                 * only a sync in the window of the next prediction clears
+                 * miss, so noise alone still ends as lost. */
+                if(in || g.miss>=RELOCK){
+                    g.c=n;
+                    restart();
+                    return;
+                }
             }
         }
     scan:;
@@ -576,6 +618,7 @@ static void sample(int32_t adc){
 static void handleKeys(void){
     const app_api_t *A=g.A;
     uint8_t key=A->get_key();
+    if(key==APP_KEY_PTT) key=APP_KEY_INVALID;  /* reject UART-coupled PTT pulses */
     if(key==APP_KEY_INVALID||key==g.prevKey){ g.prevKey=key; return; }
     g.prevKey=key;
     g.redraw=1;
@@ -591,7 +634,7 @@ static void handleKeys(void){
         else if(g.image) g.image=0;
         else g.running=false;
     }
-    else if(key==APP_KEY_PTT||key==APP_KEY_MENU) send();
+    else if(key==APP_KEY_MENU) send();
     else if(key==APP_KEY_1){             /* next TX mode, F then 1 the previous one */
         if(back) g.txMode=(uint8_t)(g.txMode?g.txMode-1u:MODE_COUNT-1u);
         else if(++g.txMode>=MODE_COUNT) g.txMode=0;
@@ -655,7 +698,7 @@ __attribute__((section(".text.entry"),used))
 void app_main(const app_api_t *api){
     uint8_t img[1024];           /* on the stack: the 4 KiB overlay also holds .bss */
     uint16_t acc[128], lbuf[128];
-    uint8_t c[3];
+    uint8_t c[4];
     g.A=api;
     g.img=img;
     g.acc=acc;
@@ -668,10 +711,18 @@ void app_main(const app_api_t *api){
     g.savedRcc=RCC_APBENR1; g.savedDhr=DAC_DHR12R1;
     biasOn();
     api->backlight_on();
-    api->cfg_load(c,3);          /* rendering (erased 0xFF: 1-bit), TX mode, speaker */
+    api->cfg_load(c,4);          /* rendering (erased 0xFF: 1-bit), TX mode, speaker,
+                                    mode of the saved picture */
     g.mode=c[0]?1u:0u;
     if(c[1]<MODE_COUNT) g.txMode=c[1];
     g.spk=(uint8_t)(c[2]==1u);   /* erased (0xFF): off */
+    /* The last picture, saved by the loader when the app returned (see the
+     * end of app_main). A blank block is no picture: the packaged one, also
+     * back after an update of the app. */
+    api->asset_read(PIC,img,PIC_LEN);
+    uint8_t any=0;
+    for(unsigned i=0;i<PIC_LEN;i++) any|=img[i];
+    if(any && c[3]<MODE_COUNT){ g.rxMode=c[3]; g.have=1; g.status=ST_OK; }
     /* Speaker amplifier (PA8) as saved, off by default: PA4 joins the audio
      * before the amplifier (APRS RX), so the decoder only needs the BK4829 AF
      * output. Key 3 toggles it. */
@@ -688,6 +739,11 @@ void app_main(const app_api_t *api){
     biasOff();
     api->set_af(APP_AF_MUTE);
     api->audio_path(false);
-    c[0]=g.mode; c[1]=g.txMode; c[2]=g.spk;
-    api->cfg_save(c,3);
+    /* APP_FLAG_SAVE_SCREEN (build.sh, --save-screen): the loader keeps the
+     * screen left in the display buffers as the PIC asset block. Leave the
+     * picture there, whatever the view was; not blitted, the menu comes next.
+     * Without a picture img still holds the block read at launch. */
+    picture();
+    c[0]=g.mode; c[1]=g.txMode; c[2]=g.spk; c[3]=g.rxMode;
+    api->cfg_save(c,4);
 }
